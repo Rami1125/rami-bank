@@ -15,7 +15,8 @@ import {
   CloudLightning,
   Coins,
   ShieldCheck,
-  Building
+  Building,
+  Lock
 } from 'lucide-react';
 import { UserProfile, Transaction, Budget, RecoveryPlan } from './types';
 import { 
@@ -36,9 +37,10 @@ import AIChat from './components/AIChat';
 import BudgetManager from './components/BudgetManager';
 import RecoveryPlanView from './components/RecoveryPlanView';
 import VendorsList from './components/VendorsList';
+import VaultManager from './components/VaultManager';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors' | 'vault'>('dashboard');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -176,6 +178,18 @@ export default function App() {
           <div className="flex items-center gap-2">
             <button 
               type="button" 
+              onClick={() => setActiveTab(activeTab === 'vault' ? 'dashboard' : 'vault')}
+              className={`p-2 rounded-xl transition-all ${
+                activeTab === 'vault' 
+                  ? 'text-white bg-emerald-600 shadow-md shadow-emerald-500/20' 
+                  : 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50'
+              }`}
+              title="ניהול כספת נתונים"
+            >
+              <Lock className="w-5 h-5" />
+            </button>
+            <button 
+              type="button" 
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 text-slate-500 hover:text-emerald-600 rounded-xl hover:bg-emerald-50 transition-colors"
               title="הגדרות חשבון"
@@ -306,6 +320,10 @@ export default function App() {
 
           {activeTab === 'vendors' && (
             <VendorsList />
+          )}
+
+          {activeTab === 'vault' && (
+            <VaultManager />
           )}
         </main>
 
