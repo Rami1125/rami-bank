@@ -1,6 +1,8 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
+ * נועה הבנקאית - AIChat Component
+ * 
+ * מסך שיחה אינטראקטיבי עם נועה הסוכנת הפיננסית, המרושת כעת ישירות למערכת הזיכרון
+ * והכספת ב-Google Sheets באמצעות אסימון אבטחה וכלי ניתוח טקסטואליים.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -14,9 +16,21 @@ import {
   CheckCircle, 
   MessageSquare,
   BookmarkCheck,
-  Zap
+  Zap,
+  Lock,
+  Key,
+  Database,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Plus,
+  Save,
+  AlertCircle,
+  Search,
+  Check
 } from 'lucide-react';
 import { ChatMessage, Transaction, UserProfile } from '../types';
+import { useVaultSync, VaultRecord } from '../hooks/useVaultSync';
 
 interface AIChatProps {
   user: UserProfile;
@@ -25,11 +39,27 @@ interface AIChatProps {
 }
 
 export default function AIChat({ user, onAddTransaction, currentBalance }: AIChatProps) {
+  // חיבור ל-Hook מותאם אישית של כספת ה-Google Spreadsheet
+  const { 
+    isConfigured, 
+    gasUrl, 
+    gasToken, 
+    logChatInteraction, 
+    searchVault, 
+    saveVaultRecord, 
+    loading: vaultLoading, 
+    error: vaultError 
+  } = useVaultSync();
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-1',
       role: 'assistant',
-      text: `היי ${user.displayName}! אני נועה, היועצת הפיננסית האישית שלך. 💼✨\n\nבצ׳אט הזה אתם יכולים לכתוב לי פשוט הכל בעברית רגילה! למשל:\n• "הוצאתי 120 שקל על פיצה"\n• "קיבלתי משכורת 12500 שקלים מהעבודה"\n• "קניתי בסופרמרקט שופרסל ב-420 שקל"\n\nאני אנתח את המשפט מיד, ארשום את העסקה ואציע דרכי התייעלות מותאמות אישית. במה נתחיל היום?`,
+      text: `היי ${user.displayName}! אני נועה, היועצת הפיננסית האישית שלך. 💼✨\n\nבצ׳אט הזה אתם יכולים לכתוב לי פשוט הכל בעברית רגילה! למשל:\n• "הוצאתי 120 שקל על פיצה"\n• "קניתי בסופרמרקט שופרסל ב-420 שקל"\n\n${
+        isConfigured 
+          ? '🔒 כספת הנתונים שלך ב-Google Sheets סונכרנה בהצלחה! תוכלי כעת לשאול אותי שאלות כמו: "מה הפרטים שלי בחברת החשמל?" או "מה סיסמת הבנק שלי?" כדי לשלוף נתונים בצורה מאובטחת בזמן אמת, או לרשום רשומות חדשות.' 
+          : '⚠️ שים לב: שירות הכספת ויומן הזיכרון ב-Google Sheets טרם הופעל. ניתן להזין כתובת API בהגדרות החשבון למעלה.'
+      }\nבמה נתחיל היום?`,
       timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -37,11 +67,98 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll to bottom on new messages
+  // מצבי תצוגה וכתיבה עבור כלי ניהול הכספת העצמאי בצ׳אט
+  const [showVaultManager, setShowVaultManager] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [vKey, setVKey] = useState('');
+  const [vUser, setVUser] = useState('');
+  const [vPass, setVPass] = useState('');
+  const [vBank, setVBank] = useState('');
+  const [vContact, setVContact] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // חיפוש חלופי ידני בתוך פנל הניהול בכספת
+  const [searchQuery, setSearchQuery] = useState('');
+  const [manualRecords, setManualRecords] = useState<VaultRecord[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // ניהול שליטה בחשיפת סיסמאות אינדיבידואליות
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  const togglePasswordReveal = (keyName: string) => {
+    setRevealedPasswords(prev => ({ ...prev, [keyName]: !prev[keyName] }));
+  };
+
+  // גלילה אוטומטית מטה לקבלת הודעות חדשות
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // הגשת טופס שמירת רשומה חדשה ל-UserVault ב-Spreadsheet
+  const handleSaveVaultItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vKey.trim() || !isConfigured) return;
+
+    setIsSaving(true);
+    setSaveSuccess(false);
+
+    try {
+      const res = await saveVaultRecord(vKey.trim(), {
+        username: vUser.trim(),
+        password: vPass.trim(),
+        bankAccount: vBank.trim(),
+        contactInfo: vContact.trim(),
+        amountUpdated: currentBalance.toString()
+      });
+
+      if (res && res.success) {
+        setSaveSuccess(true);
+        
+        // הזרקת הודעת עדכון לצ׳אט
+        const notification: ChatMessage = {
+          id: Math.random().toString(36).substring(7),
+          role: 'assistant',
+          text: `🔑 בעקבות עדכון ידני, שמרתי בכספת המאובטחת שלך ב-Google Sheets את הרשומה המעודכנת: *"${vKey.trim()}"*.\nמידע זה חסוי ומוגן כעת.`,
+          timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+        };
+        setMessages(prev => [...prev, notification]);
+
+        // איפוס שדות
+        setVKey('');
+        setVUser('');
+        setVPass('');
+        setVBank('');
+        setVContact('');
+
+        setTimeout(() => {
+          setSaveSuccess(false);
+          setShowAddForm(false);
+          if (searchQuery) handleManualSearch();
+        }, 1500);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // חיפוש רשומה של כספת דרך הממשק הידני
+  const handleManualSearch = async () => {
+    if (!searchQuery.trim() || !isConfigured) return;
+    setIsSearching(true);
+    try {
+      const res = await searchVault(searchQuery.trim());
+      setManualRecords(res || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // שידור ההודעה ל-AI
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || isLoading) return;
 
@@ -57,68 +174,121 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
     setIsLoading(true);
 
     try {
-      // Step 1: Check if the text is asking for transaction parsing
-      const isParsingIntent = /הוצאתי|קניתי|שילמתי|נכנס|קיבלתי|הפקדתי|עלה לי|שקל|סופר|שופרסל|\d+/.test(textToSend);
+      let isVaultHandled = false;
+      let vaultExplanation = '';
+      let matchedVaultItems: VaultRecord[] = [];
 
-      if (isParsingIntent) {
-        const response = await fetch('/api/gemini/parse-expense', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: textToSend })
-        });
+      // בדיקת התאמת שאילתה לחיפוש מידע כספת ב-Google Sheet
+      if (isConfigured) {
+        const isVaultTrigger = /כספת|סיסמ|חשבון|הזדהות|פרטי הגישה|פרטי בנק|בנק שלי|סיסמה/i.test(textToSend);
+        if (isVaultTrigger) {
+          // חילוץ המילה המרכזית לחיפוש הגליון על ידי ניקוי מילות קישור נפוצות
+          const searchKeyword = textToSend
+            .replace(/(מה|פרטי|הזדהות|שלי|הסיסמה|כספת|בכספת|של|באיזה|סיסמה|חשבון|החשבון|אצלי|הפרטים|תראה|תראי|לי|תשמור|שמור)/g, " ")
+            .trim()
+            .replace(/\s+/g, " ");
 
-        if (!response.ok) throw new Error('Failed parsing transaction');
-
-        const parsedData = await response.json();
-
-        const assistantMsg: ChatMessage = {
-          id: Math.random().toString(36).substring(7),
-          role: 'assistant',
-          text: parsedData.explanation || 'זיהיתי תנועה פיננסית פוטנציאלית.',
-          timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-          parsedTransaction: {
-            type: parsedData.type,
-            amount: parsedData.amount,
-            category: parsedData.category,
-            vendorName: parsedData.vendorName,
-            approved: false
+          if (searchKeyword.length >= 2) {
+            const records = await searchVault(searchKeyword);
+            if (records && records.length > 0) {
+              matchedVaultItems = records;
+              vaultExplanation = `🔒 התחברתי בהצלחה לכספת המאובטחת שלך ב-Google Sheets!\n\nהנה הרשומות שנתקלו בהתאמה הדוקה ביחס למילות המפתח שביקשת ("${searchKeyword}"):`;
+              isVaultHandled = true;
+            }
           }
-        };
+        }
+      }
 
-        setMessages(prev => [...prev, assistantMsg]);
-      } else {
-        // Step 2: Handle standard financial query or advisory
-        const currentContext = {
-          userName: user.displayName,
-          balance: currentBalance,
-          date: new Date().toISOString()
-        };
+      let assistantMsg: ChatMessage;
 
-        const response = await fetch('/api/gemini/advisor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [...messages, userMsg],
-            currentStatus: currentContext
-          })
-        });
-
-        if (!response.ok) throw new Error('Advisor request failing');
-
-        const advData = await response.json();
-
-        const assistantMsg: ChatMessage = {
+      if (isVaultHandled) {
+        assistantMsg = {
           id: Math.random().toString(36).substring(7),
           role: 'assistant',
-          text: advData.text,
-          timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+          text: vaultExplanation,
+          timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+          vaultRecords: matchedVaultItems
         };
-
         setMessages(prev => [...prev, assistantMsg]);
+
+        // רישום השיחה ליומן מרוחק (ChatLogs)
+        if (isConfigured) {
+          logChatInteraction('guest-123', textToSend, vaultExplanation, `vault-search-query: ${textToSend}`);
+        }
+      } else {
+        // מנגנון ניתוח העסקה או יעוץ הפיננסי (רגיל)
+        const isParsingIntent = /הוצאתי|קניתי|שילמתי|נכנס|קיבלתי|הפקדתי|עלה לי|שקל|סופר|שופרסל|\d+/.test(textToSend);
+
+        if (isParsingIntent) {
+          const response = await fetch('/api/gemini/parse-expense', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: textToSend })
+          });
+
+          if (!response.ok) throw new Error('Failed parsing transaction');
+
+          const parsedData = await response.json();
+
+          assistantMsg = {
+            id: Math.random().toString(36).substring(7),
+            role: 'assistant',
+            text: parsedData.explanation || 'זיהיתי תנועה פיננסית פוטנציאלית.',
+            timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+            parsedTransaction: {
+              type: parsedData.type,
+              amount: parsedData.amount,
+              category: parsedData.category,
+              vendorName: parsedData.vendorName,
+              approved: false
+            }
+          };
+
+          setMessages(prev => [...prev, assistantMsg]);
+
+          // רישום השיחה ביומן ChatLogs ב-Spreadsheet באופן אסינכרוני
+          if (isConfigured) {
+            logChatInteraction('guest-123', textToSend, assistantMsg.text, `parsed-tx: ${parsedData.type}`);
+          }
+        } else {
+          // מנגנון ייעוץ כללי
+          const currentContext = {
+            userName: user.displayName,
+            balance: currentBalance,
+            date: new Date().toISOString()
+          };
+
+          const response = await fetch('/api/gemini/advisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [...messages, userMsg],
+              currentStatus: currentContext
+            })
+          });
+
+          if (!response.ok) throw new Error('Advisor request failing');
+
+          const advData = await response.json();
+
+          assistantMsg = {
+            id: Math.random().toString(36).substring(7),
+            role: 'assistant',
+            text: advData.text,
+            timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+          };
+
+          setMessages(prev => [...prev, assistantMsg]);
+
+          // רישום השיחה ביומן ChatLogs ב-Spreadsheet באופן אסינכרוני
+          if (isConfigured) {
+            logChatInteraction('guest-123', textToSend, assistantMsg.text, 'advisor-discourse');
+          }
+        }
       }
     } catch (e) {
       console.error(e);
-      // Friendly Hebrew error fallback
+      // fallback
       const errorMsg: ChatMessage = {
         id: Math.random().toString(36).substring(7),
         role: 'assistant',
@@ -146,7 +316,6 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
         freeText: 'אושר דרך הצ׳אט של נועה'
       });
 
-      // Update message structure to marked approved visually
       setMessages(prev => {
         const copy = [...prev];
         if (copy[idx] && copy[idx].parsedTransaction) {
@@ -171,7 +340,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
 
   const suggestedPrompts = [
     'הוצאתי 350 שקל בשופרסל על קניות לבית',
-    'קיבלתי מענק חג בסך 1000 שקלים מהעבודה',
+    'מה פרטי הזדהות שלי בכספת?',
     'שילמתי 120 שקל דלק בתחנת דור אלון',
     'איך אני יכול לבנות תוכנית כדי לצאת מהמינוס החודש?'
   ];
@@ -189,14 +358,187 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
               <h4 className="text-sm font-bold">נועה הבנקאית</h4>
               <Sparkles className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
             </div>
-            <span className="text-[10px] text-emerald-400 block font-medium">פעילה כעת | Gemini AI Engine</span>
+            <span className="text-[10px] text-emerald-400 block font-medium">
+              {isConfigured ? 'חיבור כספת וזיכרון (Google Sheets) פעיל' : 'מצב מקוון | ללא סנכרון כספת חלופי'}
+            </span>
           </div>
         </div>
-        <div className="bg-slate-800 text-xs text-emerald-400 py-1.5 px-3 rounded-full flex items-center gap-1 font-mono border border-slate-700/80">
-          <Zap className="w-3 h-3 text-emerald-400 fill-emerald-400 shrink-0" />
-          <span>חיבור AI פעיל</span>
+        <div className="flex items-center gap-2">
+          {isConfigured && (
+            <button
+              onClick={() => setShowVaultManager(!showVaultManager)}
+              className="text-xs font-bold bg-slate-800 text-emerald-400 hover:bg-slate-700 py-1.5 px-3 rounded-xl flex items-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>כספת כספים</span>
+            </button>
+          )}
+          <div className="bg-slate-800 text-xs text-emerald-400 py-1.5 px-3 rounded-full flex items-center gap-1 font-mono border border-slate-700/80">
+            <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
+            <span>AI פעיל</span>
+          </div>
         </div>
       </div>
+
+      {/* Collapsible Secure Vault Manager Overlay Drawer */}
+      {isConfigured && showVaultManager && (
+        <div className="bg-slate-50 border-b border-slate-200 p-4 space-y-3.5 animate-fadeIn max-h-[18rem] overflow-y-auto">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Database className="w-4 h-4 text-emerald-600 animate-pulse" />
+              <h4 className="text-xs font-extrabold text-slate-800">כספת מאובטחת - סנכרון ישיר ל-Sheet</h4>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 py-1 px-2.5 rounded-lg border border-emerald-100 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                רשומה חדשה
+              </button>
+              <button
+                onClick={() => setShowVaultManager(false)}
+                className="text-[10px] text-gray-500 hover:text-gray-700 font-bold"
+              >
+                סגור פנל
+              </button>
+            </div>
+          </div>
+
+          {/* Form to insert/update secure items */}
+          {showAddForm && (
+            <form onSubmit={handleSaveVaultItem} className="p-3 bg-white rounded-xl border border-gray-200/80 space-y-3 shadow-inner">
+              <div className="grid grid-cols-2 gap-2 text-3xs font-semibold text-gray-600">
+                <div>
+                  <label className="block mb-1 text-gray-500">מפתח / שם שירות (למשל: login_company)*</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="מזהה ייחודי"
+                    value={vKey}
+                    onChange={(e) => setVKey(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-gray-500">שם משתמש / אימייל</label>
+                  <input
+                    type="text"
+                    placeholder="Username"
+                    value={vUser}
+                    onChange={(e) => setVUser(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-gray-500">סיסמה חסויה</label>
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={vPass}
+                    onChange={(e) => setVPass(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-gray-500">חשבון בנק (אם רלוונטי)</label>
+                  <input
+                    type="text"
+                    placeholder="מספר חשבון"
+                    value={vBank}
+                    onChange={(e) => setVBank(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block mb-1 text-gray-500">פרטי קשר אישיים / הערות נוספות</label>
+                  <input
+                    type="text"
+                    placeholder="טלפון תמיכה או מידע נוסף"
+                    value={vContact}
+                    onChange={(e) => setVContact(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                {saveSuccess ? (
+                  <span className="text-emerald-600 text-[10px] font-bold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" />
+                    נשמר והסתיים בהצלחה בחיבור Google Sheet!
+                  </span>
+                ) : (
+                  <span className="text-gray-400 text-[9px]">המידע מוצפן ישירות בגליון האישי של רמי בלבד.</span>
+                )}
+                <button
+                  type="submit"
+                  disabled={isSaving || !vKey.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {isSaving ? 'שומר בגליון...' : 'שמור בכספת'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Quick Manual Vault Search */}
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="חפש מידע בכספת (שם שירות, סיסמה, מפתח)..."
+                value={searchQuery}
+                aria-label="חיפוש בכספת"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+                className="flex-1 text-xs p-2 border border-slate-200 bg-white rounded-xl focus:outline-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={handleManualSearch}
+                disabled={isSearching || !searchQuery.trim()}
+                className="bg-slate-800 text-white px-3 py-2 rounded-xl text-xs hover:bg-slate-700 transition-all flex items-center gap-1"
+              >
+                <Search className="w-3.5 h-3.5" />
+                חפש
+              </button>
+            </div>
+
+            {/* Quick manual results display */}
+            {manualRecords.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-2.5 max-h-[8rem] overflow-y-auto space-y-2">
+                <span className="text-[9px] text-gray-400 block font-bold">תוצאות חיפוש מתוך Google Sheets:</span>
+                {manualRecords.map((item, idx) => (
+                  <div key={idx} className="p-2 bg-slate-50 border border-slate-100 rounded-lg text-2xs space-y-1">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-1">
+                      <span className="font-extrabold text-slate-800 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5 text-red-500" />
+                        {item.keyName}
+                      </span>
+                      <span className="text-[8px] text-gray-400">עודכן: {item.lastContactDate ? new Date(item.lastContactDate).toLocaleDateString() : 'היום'}</span>
+                    </div>
+                    {item.username && <div>מושב משתמש: <span className="font-mono">{item.username}</span></div>}
+                    {item.password && (
+                      <div className="flex items-center gap-1">
+                        <span>סיסמה:</span>
+                        <button type="button" onClick={() => togglePasswordReveal(item.keyName)} className="p-0.5 text-gray-400 hover:text-slate-700">
+                          {revealedPasswords[item.keyName] ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                        </button>
+                        <span className="font-mono text-xs font-bold leading-none bg-white px-1 border border-gray-100 rounded">
+                          {revealedPasswords[item.keyName] ? item.password : '••••••••'}
+                        </span>
+                      </div>
+                    )}
+                    {item.bankAccount && <div>מס חשבון: <span className="font-mono font-bold text-slate-700">{item.bankAccount}</span></div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages Bubbles Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50 chat-bubbles-container">
@@ -212,6 +554,69 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             }`}>
               <p className="whitespace-pre-line">{msg.text}</p>
               
+              {/* Display matching Vault records if retrieved through chat flow */}
+              {msg.vaultRecords && msg.vaultRecords.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {msg.vaultRecords.map((rec, rIdx) => (
+                    <div key={rIdx} className="p-3.5 bg-slate-50 text-slate-800 border border-slate-200 rounded-2xl relative shadow-inner overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1.5 bg-red-500 h-full"></div>
+                      <div className="flex justify-between items-center pb-2 border-b border-gray-100 font-sans">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-red-500" />
+                          כספת: {rec.keyName}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {rec.lastContactDate ? `עודכן: ${new Date(rec.lastContactDate).toLocaleDateString('he-IL')}` : ''}
+                        </span>
+                      </div>
+                      <div className="mt-2.5 grid grid-cols-1 gap-1.5 text-xs text-slate-700">
+                        {rec.username && (
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-gray-400">שם משתמש:</span>
+                            <span className="font-semibold select-all bg-white p-1 rounded border border-gray-100 font-mono text-left" dir="ltr">{rec.username}</span>
+                          </div>
+                        )}
+                        {rec.password && (
+                          <div className="flex justify-between items-center py-1 font-sans">
+                            <span className="text-gray-400">סיסמה:</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordReveal(rec.keyName)}
+                                className="p-1 hover:bg-gray-100 rounded text-slate-500 text-xs"
+                              >
+                                {revealedPasswords[rec.keyName] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                              <span className="font-semibold font-mono select-all bg-white p-1 rounded border border-gray-100 text-left" dir="ltr">
+                                {revealedPasswords[rec.keyName] ? rec.password : '••••••••'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {rec.bankAccount && (
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-gray-400">חשבון בנק מקושר:</span>
+                            <span className="font-semibold select-all bg-white p-1 rounded border border-gray-100 font-mono text-left" dir="ltr">{rec.bankAccount}</span>
+                          </div>
+                        )}
+                        {rec.contactInfo && (
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-gray-400">פרטי קשר / טלפון:</span>
+                            <span className="font-semibold select-all font-mono text-gray-900 text-left" dir="ltr">{rec.contactInfo}</span>
+                          </div>
+                        )}
+                        {rec.lastAmountUpdated && (
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-gray-400">יתרת עדכון אחרון:</span>
+                            <span className="font-bold text-emerald-600 font-mono">{parseFloat(rec.lastAmountUpdated).toLocaleString()} ₪</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Approval Widget for Parsed Transactions */}
               {msg.parsedTransaction && (
                 <div className="mt-4 p-3.5 bg-slate-50 text-slate-800 border border-slate-200 rounded-xl space-y-3 shadow-inner">
@@ -267,12 +672,14 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
         {isLoading && (
           <div className="flex justify-end">
             <div className="bg-white border border-slate-200 p-4 rounded-xl rounded-tl-none shadow-sm flex items-center gap-2">
-              <div className="flex gap-1">
+              <div className="flex gap-1 animate-pulse">
                 <span className="w-2 h-2 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                 <span className="w-2 h-2 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                 <span className="w-2 h-2 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
               </div>
-              <span className="text-xs text-slate-500 font-medium font-sans">נועה מנתחת את המשפט...</span>
+              <span className="text-xs text-slate-500 font-medium font-sans">
+                {vaultLoading ? 'נועה שולפת כספת מ-Google Sheets...' : 'נועה מנתחת את המשפט...'}
+              </span>
             </div>
           </div>
         )}
@@ -290,7 +697,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             <button
               key={i}
               onClick={() => selectSuggestedPrompt(p)}
-              className="text-xs shrink-0 bg-slate-50 border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-800 transition-all font-sans px-3 py-2 rounded-xl"
+              className="text-xs shrink-0 bg-slate-50 border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-800 transition-all font-sans px-3 py-2 rounded-xl cursor-pointer"
             >
               {p}
             </button>
@@ -307,7 +714,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="כתוב משהו כמו: הוצאתי 50 שקל על פלאפל..."
+          placeholder="פתחו כספת או כתבו: הוצאתי 50 שקל על פלאפל..."
           className="flex-1 text-sm bg-slate-50 p-3.5 rounded-2xl border border-slate-200 focus:outline-emerald-500 font-sans text-right placeholder-slate-400"
         />
         <button

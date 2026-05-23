@@ -48,6 +48,8 @@ export default function App() {
   // Settings update fields
   const [newStartingBalance, setNewStartingBalance] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
+  const [gasUrl, setGasUrl] = useState(localStorage.getItem('NOA_GAS_URL') || '');
+  const [gasToken, setGasToken] = useState(localStorage.getItem('NOA_GAS_TOKEN') || 'NOA_SECURE_VAULT_TOKEN_2026');
 
   // Setup initial content sync inside simple useEffect on layout mount
   useEffect(() => {
@@ -120,6 +122,9 @@ export default function App() {
       displayName: newDisplayName.trim() || user.displayName,
       startingBalance: isNaN(parseFloat(newStartingBalance)) ? user.startingBalance : parseFloat(newStartingBalance)
     };
+
+    localStorage.setItem('NOA_GAS_URL', gasUrl.trim());
+    localStorage.setItem('NOA_GAS_TOKEN', gasToken.trim());
 
     await updateUserProfile(updatedProfile);
     setUser(updatedProfile);
@@ -211,6 +216,35 @@ export default function App() {
                     onChange={(e) => setNewStartingBalance(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-sm font-mono"
                   />
+                </div>
+
+                <div className="border-t border-slate-100 pt-3">
+                  <h4 className="font-bold text-gray-900 mb-2 flex items-center gap-1">
+                    <span>חיבור זיכרון וכספת (Google Sheets API)</span>
+                  </h4>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block mb-1 text-slate-500 font-medium">כתובת ה-Web App של Google Apps Script</label>
+                      <input 
+                        type="url" 
+                        placeholder="https://script.google.com/macros/s/.../exec"
+                        value={gasUrl}
+                        onChange={(e) => setGasUrl(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white font-mono text-xs text-left"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-slate-500 font-medium">אסימון אבטחה (Secure Token)</label>
+                      <input 
+                        type="text" 
+                        value={gasToken}
+                        onChange={(e) => setGasToken(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white font-mono text-xs text-left"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex gap-3 text-emerald-900">

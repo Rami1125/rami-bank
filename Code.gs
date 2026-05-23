@@ -43,6 +43,14 @@ function initSpreadsheet() {
     contextMemorySheet.appendRow(["Device_ID", "Active_Context", "Last_Interaction_Time"]);
     contextMemorySheet.getRange("A1:C1").setFontWeight("bold").setBackground("#dbeafe");
   }
+  
+  // 4. אתחול גיליון ספקים (Vendors)
+  let vendorsSheet = ss.getSheetByName("Vendors");
+  if (!vendorsSheet) {
+    vendorsSheet = ss.insertSheet("Vendors");
+    vendorsSheet.appendRow(["Vendor_ID", "Category", "Vendor_Name", "Logo_URL", "Last_Updated"]);
+    vendorsSheet.getRange("A1:E1").setFontWeight("bold").setBackground("#fef08a");
+  }
 }
 
 /**
@@ -248,4 +256,67 @@ function buildResponse(success, message, statusCode, data) {
   
   return ContentService.createTextOutput(JSON.stringify(responseObj))
                        .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * פונקציה להזנת נתוני ספקים ישראליים אמיתיים לגיליון "Vendors"
+ * הפונקציה מונעת כפילויות ומבצעת הזנת אצווה (Batch Insertion) אופטימלית
+ */
+function seedVendorsData() {
+  initSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const vendorsSheet = ss.getSheetByName("Vendors");
+  
+  if (!vendorsSheet) {
+    Logger.log("שגיאה: גיליון Vendors אינו קיים ולא ניתן לפעול.");
+    return;
+  }
+  
+  // בדיקה האם קיימים נתונים מעבר לשורת הכותרת
+  const lastRow = vendorsSheet.getLastRow();
+  if (lastRow > 1) {
+    Logger.log("הגיליון כבר מכיל נתונים (" + (lastRow - 1) + " רשומות). הפעולה בוטלה כדי למנוע כפילויות.");
+    return;
+  }
+  
+  const timestamp = new Date().toISOString();
+  
+  // רשימת 20 ספקים ישראליים מובילים המקיפים את כל הקטגוריות הנדרשות
+  const vendors = [
+    // קטגוריית "תקשורת" (Telecom) - 4 ספקים
+    ["V001", "תקשורת", "בזק", "https://logo.clearbit.com/bezeq.co.il", timestamp],
+    ["V002", "תקשורת", "סלקום", "https://logo.clearbit.com/cellcom.co.il", timestamp],
+    ["V003", "תקשורת", "פרטנר", "https://logo.clearbit.com/partner.co.il", timestamp],
+    ["V004", "תקשורת", "יס (yes)", "https://logo.clearbit.com/yes.co.il", timestamp],
+    
+    // קטגוריית "ממשלתי" (Government/Institutions) - 4 ספקים
+    ["V005", "ממשלתי", "חברת החשמל לישראל", "https://logo.clearbit.com/iec.co.il", timestamp],
+    ["V006", "ממשלתי", "דואר ישראל", "https://logo.clearbit.com/israelpost.co.il", timestamp],
+    ["V007", "ממשלתי", "רשות המיסים בישראל", "https://logo.clearbit.com/gov.il", timestamp],
+    ["V008", "ממשלתי", "המוסד לביטוח לאומי", "https://logo.clearbit.com/btl.gov.il", timestamp],
+    
+    // קטגוריית "בנקים ופיננסים" (Banks & Finance) - 4 ספקים
+    ["V009", "בנקים ופיננסים", "בנק הפועלים", "https://logo.clearbit.com/bankhapoalim.co.il", timestamp],
+    ["V010", "בנקים ופיננסים", "בנק לאומי", "https://logo.clearbit.com/leumi.co.il", timestamp],
+    ["V011", "בנקים ופיננסים", "בנק דיסקונט", "https://logo.clearbit.com/discountbank.co.il", timestamp],
+    ["V012", "בנקים ופיננסים", "בנק מזרחי טפחות", "https://logo.clearbit.com/mizrahi-tefahot.co.il", timestamp],
+    
+    // קטגוריית "סופרמרקטים" (Supermarkets) - 4 ספקים
+    ["V013", "סופרמרקטים", "שופרסל", "https://logo.clearbit.com/shufersal.co.il", timestamp],
+    ["V014", "סופרמרקטים", "רמי לוי שיווק השקמה", "https://logo.clearbit.com/rami-levy.co.il", timestamp],
+    ["V015", "סופרמרקטים", "יוחננוף", "https://logo.clearbit.com/yochananof.co.il", timestamp],
+    ["V016", "סופרמרקטים", "ויקטורי", "https://logo.clearbit.com/victory.co.il", timestamp],
+    
+    // קטגוריית "ביטוח" (Insurance) - 4 ספקים
+    ["V017", "ביטוח", "מגדל חברה לביטוח", "https://logo.clearbit.com/migdal.co.il", timestamp],
+    ["V018", "ביטוח", "הראל ביטוח ופיננסים", "https://logo.clearbit.com/harel-group.co.il", timestamp],
+    ["V019", "ביטוח", "הפניקס חברה לביטוח", "https://logo.clearbit.com/fnx.co.il", timestamp],
+    ["V020", "ביטוח", "מנורה מבטחים", "https://logo.clearbit.com/menoramivt.co.il", timestamp]
+  ];
+  
+  // ביצוע הכנסת אצווה מהירה ויעילה
+  const range = vendorsSheet.getRange(2, 1, vendors.length, 5);
+  range.setValues(vendors);
+  
+  Logger.log("הזנת הנתונים הסתיימה בהצלחה! הוכנסו " + vendors.length + " ספקים ישראליים לגיליון Vendors.");
 }

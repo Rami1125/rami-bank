@@ -68,4 +68,5 @@ export interface ChatMessage {
     approved?: boolean;
   };
   adviceType?: 'warning' | 'tip' | 'praise' | 'info';
+  vaultRecords?: any[];
 }
