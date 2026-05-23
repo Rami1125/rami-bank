@@ -258,11 +258,12 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
           // Call the backend API
           const response = await sendToNoaBackend('searchVault', { keyQuery });
 
-          // Correct JSON Parsing
+          // ניתוח שדות ה-JSON, המרת המערך לאובייקט בודד, והוספת תנאי הגנה למקרה של מערך ריק
           const records = response?.data?.records || [];
+          const singleRecord = Array.isArray(records) && records.length > 0 ? records[0] : null;
 
           // Strict Injection
-          const injectedPrompt = "[REAL_VAULT_DATA]: " + JSON.stringify(records) + "\n\nUser asked: " + currentTopic;
+          const injectedPrompt = "[REAL_VAULT_DATA]: " + (singleRecord ? JSON.stringify(singleRecord) : "[]") + "\n\nUser asked: " + currentTopic;
 
           const systemContext = {
             userName: user.displayName,

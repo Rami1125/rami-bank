@@ -30,6 +30,14 @@ interface SecureVendorModalProps {
   onClose: () => void;
 }
 
+// Local accessibility wrappers to fix Dialog validation warnings
+const DialogTitle = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <h2 className={className}>{children}</h2>
+);
+const DialogDescription = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <p className={className}>{children}</p>
+);
+
 export default function SecureVendorModal({ vendor, onClose }: SecureVendorModalProps) {
   const { searchVaultSecure, loading, error, isConfigured } = useVaultSync();
   const [pin, setPin] = useState('');
@@ -152,6 +160,8 @@ export default function SecureVendorModal({ vendor, onClose }: SecureVendorModal
         exit={{ scale: 0.95, opacity: 0, y: 15 }}
         className="bg-slate-900 border border-slate-800 text-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden"
       >
+        <DialogTitle className="sr-only">פרטי כספת מאובטחים</DialogTitle>
+        <DialogDescription className="sr-only">פרטי תעדוף, סיסמה וכרטיס חיוב עבור ספק שירות נבחר במצב כספת מאובטח.</DialogDescription>
         {/* Animated Security top progress bar (only when unlocked) */}
         {isUnlocked && (
           <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800">

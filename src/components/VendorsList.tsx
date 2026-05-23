@@ -72,6 +72,14 @@ const categoryMetadata: Record<string, { icon: React.ComponentType<any>; colorCl
   }
 };
 
+// Local accessibility wrappers to fix Dialog validation warnings
+const DialogTitle = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <h2 className={className}>{children}</h2>
+);
+const DialogDescription = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <p className={className}>{children}</p>
+);
+
 export default function VendorsList() {
   const { isConfigured, fetchVendors, saveVendor, deleteVendor, seedVendors, loading, error } = useVendorsSync();
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -562,6 +570,8 @@ export default function VendorsList() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 flex flex-col relative space-y-4 animate-slideUp font-sans"
             >
+              <DialogTitle className="sr-only">הוספה או עריכה של ספק שירות</DialogTitle>
+              <DialogDescription className="sr-only">טופס מאובטח להרשמה, פירוט קטגוריית על והגדרת סמליל עבור ספקי המערכת.</DialogDescription>
               {/* כותרת מודל */}
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <h3 className="text-base font-extrabold text-slate-900">

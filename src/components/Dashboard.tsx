@@ -373,36 +373,40 @@ export default function Dashboard({
 
         <div className="w-full h-72 filter drop-shadow-sm font-mono text-xs min-w-0">
           {chartView === 'budget' ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={chartData} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="name" stroke="#888888" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} />
-                <Tooltip 
-                  formatter={(value: any) => [`${value.toLocaleString()} ₪`]}
-                  contentStyle={{ direction: 'rtl', textAlign: 'right', borderRadius: '12px', border: '1px solid #e5e7eb' }}
-                />
-                <Bar dataKey="הוצאה" radius={[6, 6, 0, 0]}>
-                  {chartData.map((entry, index) => {
-                    const isOver = entry.הוצאה > entry.תקציב;
-                    return <Cell key={`cell-${index}`} fill={isOver ? '#f43f5e' : '#10b981'} />;
-                  })}
-                </Bar>
-                <Bar dataKey="תקציב" fill="#e2e8f0" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="w-full h-72">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <BarChart data={chartData} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>
+                  <XAxis dataKey="name" stroke="#888888" tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    formatter={(value: any) => [`${value.toLocaleString()} ₪`]}
+                    contentStyle={{ direction: 'rtl', textAlign: 'right', borderRadius: '12px', border: '1px solid #e5e7eb' }}
+                  />
+                  <Bar dataKey="הוצאה" radius={[6, 6, 0, 0]}>
+                    {chartData.map((entry, index) => {
+                      const isOver = entry.הוצאה > entry.תקציב;
+                      return <Cell key={`cell-${index}`} fill={isOver ? '#f43f5e' : '#10b981'} />;
+                    })}
+                  </Bar>
+                  <Bar dataKey="תקציב" fill="#e2e8f0" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={momChartData} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="name" stroke="#888888" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} />
-                <Tooltip 
-                  formatter={(value: any) => [`${value.toLocaleString()} ₪`]}
-                  contentStyle={{ direction: 'rtl', textAlign: 'right', borderRadius: '12px', border: '1px solid #e5e7eb' }}
-                />
-                <Bar dataKey="החודש" fill="#10b981" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="חודש קודם" fill="#94a3b8" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="w-full h-72">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <BarChart data={momChartData} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>
+                  <XAxis dataKey="name" stroke="#888888" tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    formatter={(value: any) => [`${value.toLocaleString()} ₪`]}
+                    contentStyle={{ direction: 'rtl', textAlign: 'right', borderRadius: '12px', border: '1px solid #e5e7eb' }}
+                  />
+                  <Bar dataKey="החודש" fill="#10b981" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="חודש קודם" fill="#94a3b8" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
 

@@ -126,17 +126,18 @@ export async function getAdvisorAdvice(messages: any[], currentStatus: any): Pro
     // Check if we have an injected secure context
     if (userMsg.includes('[REAL_VAULT_DATA]')) {
       const dataMatch = userMsg.match(/\[REAL_VAULT_DATA\]:\s*(\[.*?\]|\{.*?\})/);
-      let records: any[] = [];
+      let parsedData: any = null;
       if (dataMatch) {
         try {
-          records = JSON.parse(dataMatch[1]);
+          parsedData = JSON.parse(dataMatch[1]);
         } catch (e) {}
       }
       
-      if (records && records.length > 0) {
-        const rec = records[0];
+      const rec = Array.isArray(parsedData) ? parsedData[0] : parsedData;
+      
+      if (rec && typeof rec === 'object' && Object.keys(rec).length > 0) {
         return `🔓 הנה פרטי הרשומה שאושרו ושולפו בהצלחה:
-- **שירות**: ${rec.keyName}
+- **שירות**: ${rec.keyName || 'לא הוגדר'}
 - **שם משתמש**: ${rec.username || 'לא הוגדר'}
 - **סיסמה**: ${rec.password || 'לא הוגדר'}
 - **חשבון בנק**: ${rec.bankAccount || 'לא הוגדר'}
