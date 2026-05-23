@@ -68,7 +68,7 @@ export default function LoginScreen({ onUnlock }: LoginScreenProps) {
               className="w-24 h-24 rounded-full bg-slate-800 border-2 border-emerald-500/40 p-1 shadow-2xl relative"
             >
               <img 
-                src="https://api.dicebear.com/7.x/notionists/svg?seed=Noa&backgroundColor=e2e8f0" 
+                src="https://i.postimg.cc/SRTL9Xk6/Gemini-Generated-Image-uekconuekconuekc.png" 
                 alt="נועה הבנקאית" 
                 referrerPolicy="no-referrer"
                 className="w-full h-full rounded-full object-cover" 

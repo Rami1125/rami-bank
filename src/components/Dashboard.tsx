@@ -215,7 +215,7 @@ export default function Dashboard({
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-emerald-500/25 p-0.5 shadow-sm">
             <img 
-              src="https://api.dicebear.com/7.x/notionists/svg?seed=Noa&backgroundColor=e2e8f0" 
+              src="https://i.postimg.cc/SRTL9Xk6/Gemini-Generated-Image-uekconuekconuekc.png" 
               alt="נועה הבנקאית" 
               referrerPolicy="no-referrer"
               className="w-full h-full rounded-full object-cover" 
