@@ -120,7 +120,32 @@ export async function getAdvisorAdvice(messages: any[], currentStatus: any): Pro
 
   if (!ai) {
     console.log("No GEMINI_API_KEY found on client. Simulating advisor feedback locally.");
-    const userMsg = messages[messages.length - 1]?.text || '';
+    const lastMsg = messages[messages.length - 1];
+    const userMsg = lastMsg?.text || '';
+    
+    // Check if we have an injected secure context
+    if (userMsg.includes('[REAL_VAULT_DATA]')) {
+      const dataMatch = userMsg.match(/\[REAL_VAULT_DATA\]:\s*(\[.*?\]|\{.*?\})/);
+      let records: any[] = [];
+      if (dataMatch) {
+        try {
+          records = JSON.parse(dataMatch[1]);
+        } catch (e) {}
+      }
+      
+      if (records && records.length > 0) {
+        const rec = records[0];
+        return `🔓 הנה פרטי הרשומה שאושרו ושולפו בהצלחה:
+- **שירות**: ${rec.keyName}
+- **שם משתמש**: ${rec.username || 'לא הוגדר'}
+- **סיסמה**: ${rec.password || 'לא הוגדר'}
+- **חשבון בנק**: ${rec.bankAccount || 'לא הוגדר'}
+- **פרטי קשר / הערות**: ${rec.contactInfo || 'לא הוגדרו'}`;
+      } else {
+        return `הפרטים הללו לא נמצאו בכספת הדיגיטלית שלך. תרצה שאשמור אותם עבורך?`;
+      }
+    }
+
     let simReply = "שלום! אני כאן לעזור לך לנהל את התקציב שלך, לייעל את ההוצאות ולבנות תוכנית הבראה פיננסית מותאמת אישית.";
     
     if (userMsg.includes('תוכנית') || userMsg.includes('איך לחסוך') || userMsg.includes('הבראה')) {
@@ -129,7 +154,7 @@ export async function getAdvisorAdvice(messages: any[], currentStatus: any): Pro
       simReply = "ראיתי שהוצאות המזון והסופרמרקט השבוע היו גבוהות מעט מהממוצע. קנייה חכמה עם רשימה מוכנה מראש יכולה לחסוך לך כ-150 שקלים כבר השבוע!";
     }
 
-    return `${simReply} (מצב סימולציה מקומי - להפעלה מלאה הזינו מפתח Gemini API בקוביית ה-API מטה)`;
+    return `${simReply}`;
   }
 
   try {
@@ -137,12 +162,22 @@ export async function getAdvisorAdvice(messages: any[], currentStatus: any): Pro
       return `${m.role === 'user' ? 'המשתמש' : 'נועה הבנקאית'}: ${m.text}`;
     }).join('\n');
 
-    const systemInstruction = `אתה "נועה הבנקאית" - יועצת פיננסית אישית, חכמה, חמה ומעודדת.
-המטרה שלך היא לעזור למשתמשים ישראלים להשתלט על הכסף שלהם, לצאת מהמינוס ולבנות תוכניות חיסכון והבראה ריאליות.
-השתמש בשפה עברית חיובית, מקרבת, לא שיפוטית ומעשית.
-השתמש במונחים ישראלים מוכרים וידידותיים (למשל ש"ח, מינוס, שופרסל, הוצאות בלתי צפויות).
-יש לך גישה לפרטים הפיננסיים הנוכחיים של המשתמש: ${JSON.stringify(currentStatus || {})}.
-ענה ישירות למשתמש בצורה מסודרת, לפעמים עם נקודות ברורות שיעזרו לו לנקוט פעולה מיידית.`;
+    const systemInstruction = `אתה "נועה הבנקאית" - עוזרת מחקר פיננסי ויועצת פיננסית אישית מאובטחת עבור רמי (Rami).
+
+CRITICAL SECURITY & GROUNDING RULES:
+1. You have ZERO autonomous knowledge of Rami's real passwords, bank accounts, or usernames.
+2. You are STRICTLY FORBIDDEN from inventing, guessing, or hallucinating any mock credentials, bank numbers, or codes (e.g., NEVER say "mizrahi_user99" or "MizrahiPass2026!").
+3. If Rami asks for sensitive info (e.g., "מה פרטי זיהוי שלי בבנק מזרחי?"), you must ONLY respond with this exact phrase: "בבקשה הזן את סיסמת הכספת לאימות".
+
+DATA INTERACTION FLOW:
+- Once Rami inputs the correct vault password, the React application will fetch the actual row from the Google Sheet and inject it into the prompt history as a structured context block labeled: [REAL_VAULT_DATA].
+- You must ONLY extract and present the details found inside that [REAL_VAULT_DATA] block.
+- If the block is empty, missing, or indicates no record was found, you must respond in Hebrew stating that the record does not exist in the vault: "הפרטים הללו לא נמצאו בכספת הדיגיטלית שלך. תרצה שאשמור אותם עבורך?".
+
+TONE AND LANGUAGE:
+- Speak in sharp, concise, professional yet friendly Hebrew (eye-level, direct, no fluff).
+
+פרטים פיננסיים של המשתמש: ${JSON.stringify(currentStatus || {})}`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.5-flash',

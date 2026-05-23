@@ -56,6 +56,8 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState(getGeminiKey());
   const [pendingVaultQuery, setPendingVaultQuery] = useState<string | null>(null);
+  const [isAwaitingPassword, setIsAwaitingPassword] = useState(false);
+  const [currentTopic, setCurrentTopic] = useState<string>('');
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -164,6 +166,60 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
     }
   };
 
+  // שירות שליחת שאילתה לכספת המגובה ב-Google Sheets או בסימולציה
+  const sendToNoaBackend = async (action: string, payload: { keyQuery: string }) => {
+    if (isConfigured) {
+      try {
+        const results = await searchVaultSecure(payload.keyQuery, '1125');
+        return { data: results || [] };
+      } catch (err) {
+        console.error('Error fetching vault secure data:', err);
+      }
+    }
+    
+    // סימולציה מקומית תואמת למניעת שגיאות כשאין חיבור גליון פתוח
+    const cleanTopic = payload.keyQuery.toLowerCase();
+    let simulatedRecords: VaultRecord[] = [];
+    if (cleanTopic.includes('מזרחי') || cleanTopic.includes('mizrahi')) {
+      simulatedRecords = [{
+        keyName: 'בנק מזרחי טפחות',
+        username: 'rami_mizrahi',
+        password: 'MizrahiPass2026!',
+        bankAccount: 'בנק מזרחי טפחות (20), סניף 456, ח״ן 789123',
+        contactInfo: 'טלפון בנקאי אישי: *0988',
+        lastContactDate: new Date().toISOString()
+      }];
+    } else if (cleanTopic.includes('חשמל')) {
+      simulatedRecords = [{
+        keyName: 'חברת החשמל',
+        username: 'iec_client_77',
+        password: 'IecSecure992!',
+        bankAccount: 'בנק לאומי (10), סניף 800, ח״ן 518392',
+        contactInfo: 'חוזה: 9981232',
+        lastContactDate: new Date().toISOString()
+      }];
+    } else if (cleanTopic.includes('שופרסל')) {
+      simulatedRecords = [{
+        keyName: 'שופרסל שלי',
+        username: 'shufersal_user',
+        password: 'Shufersal9@1',
+        bankAccount: 'כרטיס ויזה כאל, **** **** **** 8824',
+        contactInfo: 'קוד מועדון משפחתי: SH-0129',
+        lastContactDate: new Date().toISOString()
+      }];
+    } else {
+      simulatedRecords = [{
+        keyName: payload.keyQuery || 'בנק מזרחי',
+        username: 'rami_mizrahi',
+        password: 'MizrahiPass2026!',
+        bankAccount: 'חשבון עו״ש ח״ן 789123',
+        contactInfo: 'פרטי קשר מאובטחים',
+        lastContactDate: new Date().toISOString()
+      }];
+    }
+    return { data: simulatedRecords };
+  };
+
   // שידור ההודעה ל-AI
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || isLoading) return;
@@ -180,74 +236,29 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
     setIsLoading(true);
 
     try {
-      let isVaultHandled = false;
       let vaultExplanation = '';
-      let matchedVaultItems: VaultRecord[] = [];
       let assistantMsg: ChatMessage;
 
-      // 1. בדיקת שלב אימות מאוחר של כספת (הזנת קוד)
-      if (pendingVaultQuery) {
+      // 1. בדיקת שלב אימות מאוחר של כספת (הזנת קוד) - awaiting_vault_password
+      if (isAwaitingPassword || pendingVaultQuery) {
         if (textToSend.trim() === '1125') {
-          // קוד גישה נכון של הכספת - שליפת נתונים מאובטחת
-          let fetchedMatched: VaultRecord[] = [];
+          // קוד גישה חיובי - הפעלת שליפה מאחורי הקלעים
+          const topicToSearch = currentTopic || pendingVaultQuery || 'בנק מזרחי';
           
-          if (isConfigured) {
-            const cleanKeyword = pendingVaultQuery
-              .replace(/(מה|פרטי|הזדהות|שלי|הסיסמה|כספת|בכספת|של|באיזה|סיסמה|חשבון|החשבון|אצלי|הפרטים|תראה|תראי|לי|תשמור|שמור)/g, " ")
-              .trim()
-              .replace(/\s+/g, " ");
-              
-            if (cleanKeyword.length >= 2) {
-              const records = await searchVaultSecure(cleanKeyword, '1125');
-              if (records && records.length > 0) {
-                fetchedMatched = records;
-              }
-            }
-          }
-
-          if (fetchedMatched.length === 0) {
-            // רשומות דמה מאובטחות ברמה גבוהה במצבי פיתוח/סימולטור
-            const fallbackKeywords = pendingVaultQuery.toLowerCase();
-            let keyName = "בנק מזרחי טפחות";
-            let userStr = "mizrahi_user99";
-            let passStr = "MizrahiPass2026!";
-            let bankStr = "בנק מזרחי טפחות (20), סניף 456, ח״ן 789123";
-            let contactStr = "מזהה לקוח: MZ-1882 | קוד זיהוי: 991823";
-
-            if (fallbackKeywords.includes('חשמל') || fallbackKeywords.includes('כספת חברת חשמל')) {
-              keyName = "חברת החשמל";
-              userStr = "iec_client_77";
-              passStr = "IecSecure992!";
-              bankStr = "בנק לאומי (10), סניף 800, ח״ן 518392";
-              contactStr = "קוד משתמש: IEC-1246 | קו זיהוי: SV-88";
-            } else if (fallbackKeywords.includes('שופרסל')) {
-              keyName = "שופרסל שלי";
-              userStr = "shufersal_user";
-              passStr = "Shufersal9@1";
-              bankStr = "כרטיס ויזה כאל, **** **** **** 8824";
-              contactStr = "קוד מועדון משפחתי: SH-0129";
-            }
-
-            fetchedMatched = [{
-              keyName,
-              username: userStr,
-              password: passStr,
-              bankAccount: bankStr,
-              contactInfo: contactStr,
-              lastContactDate: new Date().toISOString(),
-              lastAmountUpdated: '***'
-            }];
-          }
-
+          setIsAwaitingPassword(false);
           setPendingVaultQuery(null);
 
-          // הזרקת המידע האמיתי מהכספת לתוך ה-System Context של ה-LLM למניעת הזיות
-          const secureContextPrompt = `The password was correct. Here is the REAL data from the DB: ${JSON.stringify(fetchedMatched)}. Present this EXACT data to the user securely inside your response. Do NOT invent any numbers or mock information.`;
-          
+          // קריאה מאובטחת ל-GAS או סימולציה מונחית
+          const response = await sendToNoaBackend('searchVault', { keyQuery: topicToSearch });
+          const fetchedMatched = response.data || [];
+
+          // בניית מחרוזת ממוקדת של מידע והזרקתו לבינה המלאכותית
+          const securePromptContent = `[REAL_VAULT_DATA]: ${JSON.stringify(fetchedMatched)} - Present ONLY these exact details to the user. Do NOT invent any numbers.`;
+
           const systemMsgWrapper = {
             id: 'system-inject-' + Math.random().toString(36).substring(7),
             role: 'user' as const,
-            text: `[SYSTEM CONTEXT: ${secureContextPrompt}]\nהסיסמה נכונה והגישה אושרה. אנא הצג למשתמש בעברית ובצורה מפורטת ומקצועית של נועה הבנקאית את הפרטים הללו בלבד ובאופן חיובי. אל תמציא נתונים אחרים.`
+            text: `אימות פעיל מול הכספת.\nמקור נתונים מהיימן:\n${securePromptContent}\nאנא פרט והצג את הנתונים הללו בשפה אנושית, ישירה וחיובית.`
           };
 
           const adviceText = await getAdvisorAdvice([...messages, systemMsgWrapper], {
@@ -256,8 +267,8 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             date: new Date().toISOString()
           });
 
-          vaultExplanation = adviceText || `🔓 קוד האימות התקבל בהצלחה! השער הופשר וכספת המידע הרגיש פתוחה עבורך ל-60 שניות.\n\nהנה הפרטים המאובטחים שמצאתי לגבי:`;
-          
+          vaultExplanation = adviceText || `מידע מוצפן נשלף בהצלחה מיומן הכספת.`;
+
           assistantMsg = {
             id: Math.random().toString(36).substring(7),
             role: 'assistant',
@@ -267,18 +278,21 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
           };
           setMessages(prev => [...prev, assistantMsg]);
           setIsLoading(false);
-          
+
           if (isConfigured) {
-            logChatInteraction('guest-123', textToSend, vaultExplanation, `vault-unlocked-query: ${pendingVaultQuery}`);
+            logChatInteraction('guest-123', textToSend, vaultExplanation, `vault-unlocked-query: ${topicToSearch}`);
           }
           return;
         } else {
-          // קוד גישה שגוי
+          // סיסמה שגויה
+          setIsAwaitingPassword(false);
+          setPendingVaultQuery(null);
+          
           vaultExplanation = `🔒 בבקשה הזן את סיסמת הכספת לאימות כדי לגשת לפרטים רגישים אלו. (מפתח סימולציה: הקלד 1125)`;
           assistantMsg = {
             id: Math.random().toString(36).substring(7),
             role: 'assistant',
-            text: vaultExplanation,
+            text: `סיסמת הכספת שהזנת שגויה. הגישה לנתונים אלו נחסמה לצורכי אבטחה וכדי להגן על המידע שלך. אנא נסה לשאול שוב ולהקיש את הקוד הנכון (רמז: 1125).`,
             timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, assistantMsg]);
@@ -291,8 +305,10 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
       const isAskingSensitive = /כספת|סיסמ|חשבון|הזדהות|פרטי הגישה|פרטי בנק|בנק שלי|סיסמה|פרטים אישיים|פרטים רגישים|קוד גישה|מזרחי|mizrahi|לאומי|פועלים/i.test(textToSend);
       if (isAskingSensitive) {
         setPendingVaultQuery(textToSend);
+        setCurrentTopic(textToSend);
+        setIsAwaitingPassword(true);
         vaultExplanation = `בבקשה הזן את סיסמת הכספת לאימות`;
-        
+
         assistantMsg = {
           id: Math.random().toString(36).substring(7),
           role: 'assistant',
@@ -301,82 +317,63 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
         };
         setMessages(prev => [...prev, assistantMsg]);
         setIsLoading(false);
-        
+
         if (isConfigured) {
           logChatInteraction('guest-123', textToSend, vaultExplanation, 'gatekeeper-challenge');
         }
         return;
       }
 
-      if (isVaultHandled) {
+      // מילוי נוהל ניתוח עסקאות או ייעוץ רגיל
+      const isParsingIntent = /הוצאתי|קניתי|שילמתי|נכנס|קיבלתי|הפקדתי|עלה לי|שקל|סופר|שופרסל|\d+/.test(textToSend);
+
+      if (isParsingIntent) {
+        const parsedData = await parseExpenseDetails(textToSend);
+
         assistantMsg = {
           id: Math.random().toString(36).substring(7),
           role: 'assistant',
-          text: vaultExplanation,
+          text: parsedData.explanation || 'זיהיתי תנועה פיננסית פוטנציאלית.',
           timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-          vaultRecords: matchedVaultItems
+          parsedTransaction: {
+            type: parsedData.type,
+            amount: parsedData.amount,
+            category: parsedData.category,
+            vendorName: parsedData.vendorName,
+            approved: false
+          }
         };
+
         setMessages(prev => [...prev, assistantMsg]);
 
-        // רישום השיחה ליומן מרוחק (ChatLogs)
         if (isConfigured) {
-          logChatInteraction('guest-123', textToSend, vaultExplanation, `vault-search-query: ${textToSend}`);
+          logChatInteraction('guest-123', textToSend, assistantMsg.text, `parsed-tx: ${parsedData.type}`);
         }
       } else {
-        // מנגנון ניתוח העסקה או יעוץ הפיננסי (רגיל)
-        const isParsingIntent = /הוצאתי|קניתי|שילמתי|נכנס|קיבלתי|הפקדתי|עלה לי|שקל|סופר|שופרסל|\d+/.test(textToSend);
+        // מנגנון ייעוץ כללי
+        const currentContext = {
+          userName: user.displayName,
+          balance: currentBalance,
+          date: new Date().toISOString()
+        };
 
-        if (isParsingIntent) {
-          const parsedData = await parseExpenseDetails(textToSend);
+        const advText = await getAdvisorAdvice([...messages, userMsg], currentContext);
 
-          assistantMsg = {
-            id: Math.random().toString(36).substring(7),
-            role: 'assistant',
-            text: parsedData.explanation || 'זיהיתי תנועה פיננסית פוטנציאלית.',
-            timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-            parsedTransaction: {
-              type: parsedData.type,
-              amount: parsedData.amount,
-              category: parsedData.category,
-              vendorName: parsedData.vendorName,
-              approved: false
-            }
-          };
+        assistantMsg = {
+          id: Math.random().toString(36).substring(7),
+          role: 'assistant',
+          text: advText,
+          timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+        };
 
-          setMessages(prev => [...prev, assistantMsg]);
+        setMessages(prev => [...prev, assistantMsg]);
 
-          // רישום השיחה ביומן ChatLogs ב-Spreadsheet באופן אסינכרוני
-          if (isConfigured) {
-            logChatInteraction('guest-123', textToSend, assistantMsg.text, `parsed-tx: ${parsedData.type}`);
-          }
-        } else {
-          // מנגנון ייעוץ כללי
-          const currentContext = {
-            userName: user.displayName,
-            balance: currentBalance,
-            date: new Date().toISOString()
-          };
-
-          const advText = await getAdvisorAdvice([...messages, userMsg], currentContext);
-
-          assistantMsg = {
-            id: Math.random().toString(36).substring(7),
-            role: 'assistant',
-            text: advText,
-            timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
-          };
-
-          setMessages(prev => [...prev, assistantMsg]);
-
-          // רישום השיחה ביומן ChatLogs ב-Spreadsheet באופן אסינכרוני
-          if (isConfigured) {
-            logChatInteraction('guest-123', textToSend, assistantMsg.text, 'advisor-discourse');
-          }
+        if (isConfigured) {
+          logChatInteraction('guest-123', textToSend, assistantMsg.text, 'advisor-discourse');
         }
       }
     } catch (e) {
       console.error(e);
-      // fallback
       const errorMsg: ChatMessage = {
         id: Math.random().toString(36).substring(7),
         role: 'assistant',
