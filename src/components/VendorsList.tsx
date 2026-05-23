@@ -25,10 +25,12 @@ import {
   Landmark,
   ShieldAlert,
   ShoppingCart,
-  ShieldCheck
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { useVendorsSync, Vendor } from '../hooks/useVendorsSync';
 import { motion, AnimatePresence } from 'motion/react';
+import SecureVendorModal from './SecureVendorModal';
 
 // מיפוי קטגוריות לאיקונים ועיצובים ייחודיים בעברית לקוהרנטיות עיצובית מושלמת
 const categoryMetadata: Record<string, { icon: React.ComponentType<any>; colorClass: string; bgClass: string; borderClass: string }> = {
@@ -73,6 +75,7 @@ const categoryMetadata: Record<string, { icon: React.ComponentType<any>; colorCl
 export default function VendorsList() {
   const { isConfigured, fetchVendors, saveVendor, deleteVendor, seedVendors, loading, error } = useVendorsSync();
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [selectedSecureVendor, setSelectedSecureVendor] = useState<Vendor | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'סופרמרקטים': true, // expandable standard starter category
   });
@@ -468,9 +471,13 @@ export default function VendorsList() {
                               className={`flex justify-between items-center py-3.5 ${idx === 0 ? '' : 'border-t border-slate-100/65'}`}
                             >
                               {/* פרטי הספק */}
-                              <div className="flex gap-3.5 items-center">
+                              <button 
+                                type="button"
+                                onClick={() => setSelectedSecureVendor(vendor)}
+                                className="flex gap-3.5 items-center cursor-pointer text-right hover:opacity-75 active:scale-[0.98] transition-all select-none"
+                              >
                                 {/* לוגו הדומיין מ-Clearbit */}
-                                <div className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1.5 overflow-hidden shrink-0 shadow-sm">
+                                <div className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1.5 overflow-hidden shrink-0 shadow-sm relative group">
                                   <img
                                     src={vendor.logoUrl}
                                     alt={vendor.vendorName}
@@ -481,9 +488,15 @@ export default function VendorsList() {
                                     }}
                                     className="w-full h-full object-contain rounded"
                                   />
+                                  <div className="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center">
+                                    <Lock className="w-3.5 h-3.5 text-emerald-600 fill-white" />
+                                  </div>
                                 </div>
                                 <div className="space-y-0.5">
-                                  <h5 className="text-sm font-bold text-slate-800">{vendor.vendorName}</h5>
+                                  <h5 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 leading-none">
+                                    {vendor.vendorName}
+                                    <Lock className="w-3 h-3 text-emerald-500 fill-emerald-50 shrink-0" />
+                                  </h5>
                                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono font-semibold">
                                     <span>מזהה ספק: {vendor.vendorId}</span>
                                     {vendor.lastUpdated && (
@@ -494,7 +507,7 @@ export default function VendorsList() {
                                     )}
                                   </div>
                                 </div>
-                              </div>
+                              </button>
 
                               {/* פעולות עבור ספק */}
                               <div className="flex items-center gap-2">
@@ -678,6 +691,16 @@ export default function VendorsList() {
           </div>
         )}
       </AnimatePresence>
+
+        {/* מודל כספת ספק מאובטחת */}
+        <AnimatePresence>
+          {selectedSecureVendor && (
+            <SecureVendorModal 
+              vendor={selectedSecureVendor} 
+              onClose={() => setSelectedSecureVendor(null)} 
+            />
+          )}
+        </AnimatePresence>
       
     </div>
   );

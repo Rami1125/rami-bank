@@ -51,6 +51,22 @@ function initSpreadsheet() {
     vendorsSheet.appendRow(["Vendor_ID", "Category", "Vendor_Name", "Logo_URL", "Last_Updated"]);
     vendorsSheet.getRange("A1:E1").setFontWeight("bold").setBackground("#fef08a");
   }
+
+  // 5. אתחול הוראות קבע (StandingOrders)
+  let standingOrdersSheet = ss.getSheetByName("StandingOrders");
+  if (!standingOrdersSheet) {
+    standingOrdersSheet = ss.insertSheet("StandingOrders");
+    standingOrdersSheet.appendRow(["ID", "Vendor_Name", "Amount", "Billing_Day", "Category"]);
+    standingOrdersSheet.getRange("A1:E1").setFontWeight("bold").setBackground("#c084fc");
+  }
+
+  // 6. אתחול הלוואות (Loans)
+  let loansSheet = ss.getSheetByName("Loans");
+  if (!loansSheet) {
+    loansSheet = ss.insertSheet("Loans");
+    loansSheet.appendRow(["ID", "Lender_Name", "Lender_Type", "Total_Amount", "Monthly_Payment", "Status"]);
+    loansSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#fb923c");
+  }
 }
 
 /**
@@ -99,6 +115,16 @@ function doPost(e) {
         return handleSearchVault(ss, payload);
       case "saveVault":
         return handleSaveVault(ss, payload);
+      case "getSecureVault":
+        return handleGetSecureVault(ss, payload);
+      case "getStandingOrders":
+        return handleGetStandingOrders(ss, payload);
+      case "saveStandingOrder":
+        return handleSaveStandingOrder(ss, payload);
+      case "getLoans":
+        return handleGetLoans(ss, payload);
+      case "saveLoan":
+        return handleSaveLoan(ss, payload);
       case "getVendors":
         return handleGetVendors(ss, payload);
       case "saveVendor":
@@ -426,5 +452,154 @@ function handleSeedVendors(ss, payload) {
     return buildResponse(true, "Vendors database seeded successfully with Israeli brands", 200);
   } catch (err) {
     return buildResponse(false, "Error while seeding: " + err.toString(), 500);
+  }
+}
+
+/**
+ * פונקציה מאובטחת לקבלת נתוני כספת רגישים בהינתן סיסמה נכונה (password / vaultPassword)
+ */
+function handleGetSecureVault(ss, payload) {
+  const vaultPassword = payload.vaultPassword || payload.password;
+  if (String(vaultPassword) !== "1125") {
+    return buildResponse(false, "Unauthorized: סיסמת כספת שגויה", 401);
+  }
+
+  const keyQuery = (payload.keyQuery || "").trim().toLowerCase();
+  const vaultSheet = ss.getSheetByName("UserVault");
+  const data = vaultSheet.getDataRange().getValues();
+  const results = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const keyName = String(data[i][0]).toLowerCase();
+    if (!keyQuery || keyName.includes(keyQuery) || keyQuery.includes(keyName)) {
+      results.push({
+        keyName: data[i][0],
+        username: data[i][1],
+        password: data[i][2],
+        bankAccount: data[i][3],
+        contactInfo: data[i][4],
+        lastContactDate: data[i][5],
+        lastAmountUpdated: data[i][6]
+      });
+    }
+  }
+
+  return buildResponse(true, "Secure vault data retrieved successfully", 200, {
+    records: results
+  });
+}
+
+/**
+ * קבלת כל הוראות הקבע מהגיליון
+ */
+function handleGetStandingOrders(ss, payload) {
+  const sheet = ss.getSheetByName("StandingOrders");
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    results.push({
+      id: data[i][0],
+      vendorName: data[i][1],
+      amount: Number(data[i][2] || 0),
+      billingDay: Number(data[i][3] || 1),
+      category: data[i][4]
+    });
+  }
+  
+  return buildResponse(true, "Standing orders retrieved successfully", 200, {
+    standingOrders: results
+  });
+}
+
+/**
+ * שמירה או עדכון של הוראת קבע
+ */
+function handleSaveStandingOrder(ss, payload) {
+  const id = payload.id || "SO" + Date.now();
+  const vendorName = payload.vendorName || "";
+  const amount = Number(payload.amount || 0);
+  const billingDay = Number(payload.billingDay || 1);
+  const category = payload.category || "";
+  
+  const sheet = ss.getSheetByName("StandingOrders");
+  const data = sheet.getDataRange().getValues();
+  let foundRowIdx = -1;
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(id).trim()) {
+      foundRowIdx = i + 1;
+      break;
+    }
+  }
+  
+  if (foundRowIdx !== -1) {
+    sheet.getRange(foundRowIdx, 2).setValue(vendorName);
+    sheet.getRange(foundRowIdx, 3).setValue(amount);
+    sheet.getRange(foundRowIdx, 4).setValue(billingDay);
+    sheet.getRange(foundRowIdx, 5).setValue(category);
+    return buildResponse(true, "Standing order updated successfully", 200, { id: id });
+  } else {
+    sheet.appendRow([id, vendorName, amount, billingDay, category]);
+    return buildResponse(true, "Standing order added successfully", 200, { id: id });
+  }
+}
+
+/**
+ * קבלת כל ההלוואות מהגיליון
+ */
+function handleGetLoans(ss, payload) {
+  const sheet = ss.getSheetByName("Loans");
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    results.push({
+      id: data[i][0],
+      lenderName: data[i][1],
+      lenderType: data[i][2],
+      totalAmount: Number(data[i][3] || 0),
+      monthlyPayment: Number(data[i][4] || 0),
+      status: data[i][5]
+    });
+  }
+  
+  return buildResponse(true, "Loans retrieved successfully", 200, {
+    loans: results
+  });
+}
+
+/**
+ * שמירה או עדכון הלוואה
+ */
+function handleSaveLoan(ss, payload) {
+  const id = payload.id || "L" + Date.now();
+  const lenderName = payload.lenderName || "";
+  const lenderType = payload.lenderType || "Bank";
+  const totalAmount = Number(payload.totalAmount || 0);
+  const monthlyPayment = Number(payload.monthlyPayment || 0);
+  const status = payload.status || "Active";
+  
+  const sheet = ss.getSheetByName("Loans");
+  const data = sheet.getDataRange().getValues();
+  let foundRowIdx = -1;
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(id).trim()) {
+      foundRowIdx = i + 1;
+      break;
+    }
+  }
+  
+  if (foundRowIdx !== -1) {
+    sheet.getRange(foundRowIdx, 2).setValue(lenderName);
+    sheet.getRange(foundRowIdx, 3).setValue(lenderType);
+    sheet.getRange(foundRowIdx, 4).setValue(totalAmount);
+    sheet.getRange(foundRowIdx, 5).setValue(monthlyPayment);
+    sheet.getRange(foundRowIdx, 6).setValue(status);
+    return buildResponse(true, "Loan updated successfully", 200, { id: id });
+  } else {
+    sheet.appendRow([id, lenderName, lenderType, totalAmount, monthlyPayment, status]);
+    return buildResponse(true, "Loan added successfully", 200, { id: id });
   }
 }

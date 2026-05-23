@@ -149,6 +149,54 @@ export function useVaultSync() {
   }, [getGasConfig]);
 
   /**
+   * פעולה 2.5: שליפת נתוני כספת רגישים ומאובטחים בעזרת סיסמה (getSecureVault)
+   */
+  const searchVaultSecure = useCallback(async (keyQuery: string, vaultPassword: string): Promise<VaultRecord[] | null> => {
+    const { url, token } = getGasConfig();
+    if (!url) return null;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          token,
+          action: 'getSecureVault',
+          keyQuery,
+          vaultPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      const result = JSON.parse(responseText);
+      
+      if (result.success && result.data && result.data.records) {
+        return result.data.records as VaultRecord[];
+      }
+      if (result.statusCode === 401) {
+        throw new Error('סיסמת כספת שגויה! הגישה נחסמה.');
+      }
+      return [];
+    } catch (err: any) {
+      console.error('Failed to search secure vault in Google Sheets:', err);
+      setError(err?.message || 'שגיאת שליפת נתוני כספת מאובטחת');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [getGasConfig]);
+
+  /**
    * פעולה 3: הוספה או עדכון של רשומה בכספת המשתמש (UserVault)
    */
   const saveVaultRecord = useCallback(async (
@@ -205,6 +253,7 @@ export function useVaultSync() {
     saveGasConfig,
     logChatInteraction,
     searchVault,
+    searchVaultSecure,
     saveVaultRecord,
     loading,
     error,
