@@ -68,6 +68,24 @@ export default function App() {
         const budgetList = await fetchBudgets(testUid);
         const planList = await fetchRecoveryPlans(testUid);
 
+        // טעינת הגדרות שרת וסנכרון סקריפט קבוע
+        try {
+          const configRes = await fetch('/api/config');
+          if (configRes.ok) {
+            const configData = await configRes.json();
+            if (configData.gasUrl) {
+              setGasUrl(configData.gasUrl);
+              localStorage.setItem('NOA_GAS_URL', configData.gasUrl);
+            }
+            if (configData.gasToken) {
+              setGasToken(configData.gasToken);
+              localStorage.setItem('NOA_GAS_TOKEN', configData.gasToken);
+            }
+          }
+        } catch (configErr) {
+          console.error("Failed to load backend config:", configErr);
+        }
+
         setUser(profile);
         setTransactions(txList);
         setBudgets(budgetList);
@@ -132,6 +150,22 @@ export default function App() {
 
     localStorage.setItem('NOA_GAS_URL', gasUrl.trim());
     localStorage.setItem('NOA_GAS_TOKEN', gasToken.trim());
+
+    // סנכרון קבוע ושלם מול השרת
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          gasUrl: gasUrl.trim(),
+          gasToken: gasToken.trim()
+        })
+      });
+    } catch (err) {
+      console.error("Failed to sync GAS config with backend:", err);
+    }
 
     await updateUserProfile(updatedProfile);
     setUser(updatedProfile);

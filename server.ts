@@ -6,6 +6,7 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
@@ -182,12 +183,46 @@ app.post('/api/gemini/advisor', async (req, res) => {
   }
 });
 
+const CONFIG_PATH = path.join(process.cwd(), 'gas_config.json');
+
+function readGasConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      const data = fs.readFileSync(CONFIG_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error('Error reading gas_config.json:', err);
+  }
+  return { gasUrl: '', gasToken: 'NOA_SECURE_VAULT_TOKEN_2026' };
+}
+
+function writeGasConfig(config: { gasUrl: string; gasToken: string }) {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error writing gas_config.json:', err);
+  }
+}
+
 // App environment details API (so client knows developer preview context)
 app.get('/api/config', (req, res) => {
+  const saved = readGasConfig();
   res.json({
     hasGeminiApiKey: !!process.env.GEMINI_API_KEY,
-    appUrl: process.env.APP_URL || 'http://localhost:3000'
+    appUrl: process.env.APP_URL || 'http://localhost:3000',
+    gasUrl: saved.gasUrl,
+    gasToken: saved.gasToken
   });
+});
+
+app.post('/api/config', (req, res) => {
+  const { gasUrl, gasToken } = req.body;
+  writeGasConfig({
+    gasUrl: (gasUrl || '').trim(),
+    gasToken: (gasToken || 'NOA_SECURE_VAULT_TOKEN_2026').trim()
+  });
+  res.json({ success: true });
 });
 
 // Setup Vite & Static Assets serving
