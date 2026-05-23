@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Rubik", "Assistant", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+  --color-accent: #f59e0b;
+  --color-success: #10b981;
+}
+
+/* Custom scrollbars and styling elements for WhatsApp-style chat */
+.chat-bubbles-container::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-bubbles-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-bubbles-container::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.3);
+  border-radius: 9px;
+}
+
+/* Base custom interactive states aligned with Professional Polish */
+.primary-btn {
+  @apply bg-emerald-600 text-white font-medium py-3 px-6 rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10;
+}
+
+.neutral-btn {
+  @apply bg-white border border-slate-200 text-slate-700 font-medium py-3 px-6 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2;
+}
+
+body {
+  font-family: 'Rubik', 'Assistant', sans-serif !important;
+  background-color: #f8fafc; /* slate-50 background tint */
+}

@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user auth details, starting balances and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "startingBalance": { "type": "number" },
+        "currency": { "type": "string" }
+      },
+      "required": ["uid", "displayName", "email", "startingBalance"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Stores vendor information and planned/expected repeating costs.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "expectedMonthlyCost": { "type": "number" }
+      },
+      "required": ["userId", "name", "category"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents an income or expense transaction parsed by AI or entered manually.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "vendorName": { "type": "string" },
+        "category": { "type": "string" },
+        "freeText": { "type": "string" }
+      },
+      "required": ["userId", "type", "amount", "date", "category"]
+    },
+    "Budget": {
+      "title": "Budget allocation",
+      "description": "Stores monthly category budgets and actual progression limits.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "category": { "type": "string" },
+        "allocatedAmount": { "type": "number" },
+        "currentAmount": { "type": "number" }
+      },
+      "required": ["userId", "month", "year", "category", "allocatedAmount"]
+    },
+    "RecoveryPlan": {
+      "title": "Recovery Plan",
+      "description": "Long term savings objectives or debt payoff tasks suggested by AI advisor Noa.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "targetGoals": { "type": "string" },
+        "timeline": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed", "paused"] },
+        "milestones": { "type": "array" }
+      },
+      "required": ["userId", "targetGoals", "timeline", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account documents."
+    },
+    "/vendors/{vendorId}": {
+      "schema": "Vendor",
+      "description": "Financial vendors or merchants."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Individual expense/income transactions tracker."
+    },
+    "/budgets/{budgetId}": {
+      "schema": "Budget",
+      "description": "Allocated vs actual financial tracking."
+    },
+    "/recovery_plans/{planId}": {
+      "schema": "RecoveryPlan",
+      "description": "Dynamic structural plans recommended by AI advisor to recover positive balance."
+    }
+  }
+}

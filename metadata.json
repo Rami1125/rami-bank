@@ -1,0 +1,6 @@
+{
+  "name": "נועה הבנקאית",
+  "description": "אפליקציית PWA מתקדמת לניהול פיננסי אישי עם סוכנת בינה מלאכותית פרואקטיבית ומלווה פיננסית צמודה.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
