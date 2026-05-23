@@ -35,9 +35,10 @@ import Dashboard from './components/Dashboard';
 import AIChat from './components/AIChat';
 import BudgetManager from './components/BudgetManager';
 import RecoveryPlanView from './components/RecoveryPlanView';
+import VendorsList from './components/VendorsList';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors'>('dashboard');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -302,6 +303,10 @@ export default function App() {
               onNavigateToChat={() => setActiveTab('chat')}
             />
           )}
+
+          {activeTab === 'vendors' && (
+            <VendorsList />
+          )}
         </main>
 
         {/* Sticky Mobile bottom Tab Nav Bar */}
@@ -351,6 +356,17 @@ export default function App() {
           >
             <Coins className="w-5 h-5" />
             <span className="text-[10px]">תוכנית הבראה</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('vendors')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+              activeTab === 'vendors' ? 'text-emerald-500 scale-105 font-bold' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Building className="w-5 h-5" />
+            <span className="text-[10px]">ספקים שלי</span>
           </button>
         </nav>
 

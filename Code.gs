@@ -99,6 +99,14 @@ function doPost(e) {
         return handleSearchVault(ss, payload);
       case "saveVault":
         return handleSaveVault(ss, payload);
+      case "getVendors":
+        return handleGetVendors(ss, payload);
+      case "saveVendor":
+        return handleSaveVendor(ss, payload);
+      case "deleteVendor":
+        return handleDeleteVendor(ss, payload);
+      case "seedVendors":
+        return handleSeedVendors(ss, payload);
       default:
         return buildResponse(false, "Unknown action: " + action, 400);
     }
@@ -319,4 +327,104 @@ function seedVendorsData() {
   range.setValues(vendors);
   
   Logger.log("הזנת הנתונים הסתיימה בהצלחה! הוכנסו " + vendors.length + " ספקים ישראליים לגיליון Vendors.");
+}
+
+/**
+ * פונקציה לקבלת רשימת הספקים מהגיליון
+ */
+function handleGetVendors(ss, payload) {
+  const vendorsSheet = ss.getSheetByName("Vendors");
+  const data = vendorsSheet.getDataRange().getValues();
+  const results = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    results.push({
+      vendorId: data[i][0],
+      category: data[i][1],
+      vendorName: data[i][2],
+      logoUrl: data[i][3],
+      lastUpdated: data[i][4]
+    });
+  }
+  
+  return buildResponse(true, "Vendors list retrieved successfully", 200, {
+    vendors: results
+  });
+}
+
+/**
+ * פונקציה להוספה או עדכון של ספק בגיליון
+ */
+function handleSaveVendor(ss, payload) {
+  const vendorId = payload.vendorId;
+  const category = payload.category || "";
+  const vendorName = payload.vendorName || "";
+  const logoUrl = payload.logoUrl || "";
+  const timestamp = new Date().toISOString();
+  
+  const vendorsSheet = ss.getSheetByName("Vendors");
+  const data = vendorsSheet.getDataRange().getValues();
+  let foundRowIdx = -1;
+  
+  if (vendorId) {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === String(vendorId).trim()) {
+        foundRowIdx = i + 1;
+        break;
+      }
+    }
+  }
+  
+  if (foundRowIdx !== -1) {
+    // עדכון ספק קיים
+    vendorsSheet.getRange(foundRowIdx, 2).setValue(category);
+    vendorsSheet.getRange(foundRowIdx, 3).setValue(vendorName);
+    vendorsSheet.getRange(foundRowIdx, 4).setValue(logoUrl);
+    vendorsSheet.getRange(foundRowIdx, 5).setValue(timestamp);
+    return buildResponse(true, "Vendor updated successfully", 200, { vendorId: vendorId, timestamp: timestamp });
+  } else {
+    // הוספת ספק חדש
+    const newId = vendorId || "V" + Date.now();
+    vendorsSheet.appendRow([newId, category, vendorName, logoUrl, timestamp]);
+    return buildResponse(true, "Vendor added successfully", 200, { vendorId: newId, timestamp: timestamp });
+  }
+}
+
+/**
+ * פונקציה למחיקת ספק מהגיליון
+ */
+function handleDeleteVendor(ss, payload) {
+  const vendorId = payload.vendorId;
+  if (!vendorId) {
+    return buildResponse(false, "Missing 'vendorId' parameter", 400);
+  }
+  const vendorsSheet = ss.getSheetByName("Vendors");
+  const data = vendorsSheet.getDataRange().getValues();
+  let foundRowIdx = -1;
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(vendorId).trim()) {
+      foundRowIdx = i + 1;
+      break;
+    }
+  }
+  
+  if (foundRowIdx !== -1) {
+    vendorsSheet.deleteRow(foundRowIdx);
+    return buildResponse(true, "Vendor deleted successfully", 200, { vendorId: vendorId });
+  } else {
+    return buildResponse(false, "Vendor not found", 404);
+  }
+}
+
+/**
+ * פונקציה להפעלת מנגנון הזנת הספקים ישירות מהממשק
+ */
+function handleSeedVendors(ss, payload) {
+  try {
+    seedVendorsData();
+    return buildResponse(true, "Vendors database seeded successfully with Israeli brands", 200);
+  } catch (err) {
+    return buildResponse(false, "Error while seeding: " + err.toString(), 500);
+  }
 }

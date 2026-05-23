@@ -352,7 +352,7 @@ export default function Dashboard({
           </div>
         )}
 
-        <div className="h-64 filter drop-shadow-sm font-mono text-xs">
+        <div className="w-full h-72 filter drop-shadow-sm font-mono text-xs">
           {chartView === 'budget' ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>

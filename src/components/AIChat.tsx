@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, Transaction, UserProfile } from '../types';
 import { useVaultSync, VaultRecord } from '../hooks/useVaultSync';
+import { getGeminiKey, saveGeminiKey, parseExpenseDetails, getAdvisorAdvice } from '../services/geminiService';
 
 interface AIChatProps {
   user: UserProfile;
@@ -50,6 +51,9 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
     loading: vaultLoading, 
     error: vaultError 
   } = useVaultSync();
+
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState(getGeminiKey());
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -220,15 +224,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
         const isParsingIntent = /הוצאתי|קניתי|שילמתי|נכנס|קיבלתי|הפקדתי|עלה לי|שקל|סופר|שופרסל|\d+/.test(textToSend);
 
         if (isParsingIntent) {
-          const response = await fetch('/api/gemini/parse-expense', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: textToSend })
-          });
-
-          if (!response.ok) throw new Error('Failed parsing transaction');
-
-          const parsedData = await response.json();
+          const parsedData = await parseExpenseDetails(textToSend);
 
           assistantMsg = {
             id: Math.random().toString(36).substring(7),
@@ -258,23 +254,12 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             date: new Date().toISOString()
           };
 
-          const response = await fetch('/api/gemini/advisor', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              messages: [...messages, userMsg],
-              currentStatus: currentContext
-            })
-          });
-
-          if (!response.ok) throw new Error('Advisor request failing');
-
-          const advData = await response.json();
+          const advText = await getAdvisorAdvice([...messages, userMsg], currentContext);
 
           assistantMsg = {
             id: Math.random().toString(36).substring(7),
             role: 'assistant',
-            text: advData.text,
+            text: advText,
             timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
           };
 
@@ -373,12 +358,49 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
               <span>כספת כספים</span>
             </button>
           )}
-          <div className="bg-slate-800 text-xs text-emerald-400 py-1.5 px-3 rounded-full flex items-center gap-1 font-mono border border-slate-700/80">
-            <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
-            <span>AI פעיל</span>
-          </div>
+          <button
+            onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+            className="bg-slate-800 hover:bg-slate-700 text-xs text-emerald-400 py-1.5 px-3 rounded-xl flex items-center gap-1 font-sans border border-slate-700/80 transition-all cursor-pointer"
+          >
+            <Key className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>הזן מפתח API</span>
+          </button>
         </div>
       </div>
+
+      {/* Collapsible Gemini Key Configuration */}
+      {showApiKeyInput && (
+        <div className="bg-slate-950 text-white p-3 border-b border-slate-850 space-y-2 text-right">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+              <Key className="w-3.5 h-3.5" />
+              <span>הגדרת מפתח Gemini API שלכם</span>
+            </div>
+            <button 
+              onClick={() => setShowApiKeyInput(false)}
+              className="text-[10px] text-slate-400 hover:text-white"
+            >
+              [סגור]
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 leading-normal">
+            כדי להריץ בינה מלאכותית ישירה, הזינו מפתח Gemini API. (אם המפתח ריק, המערכת תפעל במצב סימולטור מקומי חכם לצורך התרשמות).
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              placeholder="AIzaSy..."
+              value={geminiApiKey}
+              onChange={(e) => {
+                setGeminiApiKey(e.target.value);
+                saveGeminiKey(e.target.value);
+              }}
+              className="flex-1 bg-slate-900 border border-slate-700 p-1.5 rounded-lg text-xs font-mono text-left focus:outline-none focus:border-emerald-500"
+              dir="ltr"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Collapsible Secure Vault Manager Overlay Drawer */}
       {isConfigured && showVaultManager && (
