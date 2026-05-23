@@ -88,7 +88,18 @@ const DEFAULT_TRANSACTIONS: Transaction[] = [
   { userId: 'guest-123', type: 'expense', amount: 600, date: '2026-05-16', category: 'תחבורה ודלק', vendorName: 'רכבת ישראל', freeText: 'טעינת רב קו חופשי חודשי' },
   { userId: 'guest-123', type: 'expense', amount: 950, date: '2026-05-18', category: 'פנאי ובידור', vendorName: 'מסעדת שגב', freeText: 'ארוחת יום הולדת משפחתית' },
   { userId: 'guest-123', type: 'expense', amount: 700, date: '2026-05-19', category: 'פנאי ובידור', vendorName: 'סינמה סיטי', freeText: 'כרטיסים ופופקורן לסרט' },
-  { userId: 'guest-123', type: 'expense', amount: 400, date: '2026-05-20', category: 'קניות וביגוד', vendorName: 'זארה קניון', freeText: 'בגדים לקיץ' }
+  { userId: 'guest-123', type: 'expense', amount: 400, date: '2026-05-20', category: 'קניות וביגוד', vendorName: 'זארה קניון', freeText: 'בגדים לקיץ' },
+  
+  // Previous month (April 2026) historical seed data
+  { userId: 'guest-123', type: 'expense', amount: 4500, date: '2026-04-02', category: 'דיור וחשבונות', vendorName: 'בעל הבית - שכירות', freeText: 'שכירות דירה חודש קודם' },
+  { userId: 'guest-123', type: 'expense', amount: 1550, date: '2026-04-10', category: 'מזון וסופרמרקט', vendorName: 'שופרסל דיל', freeText: 'קניות סופר' },
+  { userId: 'guest-123', type: 'expense', amount: 300, date: '2026-04-12', category: 'מזון וסופרמרקט', vendorName: 'מכולת שכונתית', freeText: 'קניות קטנות' },
+  { userId: 'guest-123', type: 'expense', amount: 450, date: '2026-04-14', category: 'תחבורה ודלק', vendorName: 'פז', freeText: 'דלק' },
+  { userId: 'guest-123', type: 'expense', amount: 550, date: '2026-04-16', category: 'תחבורה ודלק', vendorName: 'רכבת ישראל', freeText: 'נסיעות עבודה' },
+  { userId: 'guest-123', type: 'expense', amount: 400, date: '2026-04-18', category: 'פנאי ובידור', vendorName: 'קפה קפה', freeText: 'בילוי עם חברים' },
+  { userId: 'guest-123', type: 'expense', amount: 900, date: '2026-04-19', category: 'פנאי ובידור', vendorName: 'הופעה זאפה', freeText: 'כרטיסים להופעה' },
+  { userId: 'guest-123', type: 'expense', amount: 800, date: '2026-04-22', category: 'קניות וביגוד', vendorName: 'קניון עזריאלי', freeText: 'נעלי ריצה' },
+  { userId: 'guest-123', type: 'expense', amount: 200, date: '2026-04-25', category: 'אחר', vendorName: 'בית מרקחת', freeText: 'תרופות' }
 ];
 
 const DEFAULT_RECOVERY_PLANS: RecoveryPlan[] = [
