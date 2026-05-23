@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, Transaction, UserProfile } from '../types';
 import { useVaultSync, VaultRecord } from '../hooks/useVaultSync';
-import { getGeminiKey, saveGeminiKey, parseExpenseDetails, getAdvisorAdvice } from '../services/geminiService';
+import { getGeminiKey, saveGeminiKey, parseExpenseDetails, getAdvisorAdvice, getAdvisorResponse } from '../services/geminiService';
 
 interface AIChatProps {
   user: UserProfile;
@@ -171,7 +171,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
     if (isConfigured) {
       try {
         const results = await searchVaultSecure(payload.keyQuery, '1125');
-        return { data: results || [] };
+        return { data: { records: results || [] } };
       } catch (err) {
         console.error('Error fetching vault secure data:', err);
       }
@@ -217,7 +217,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
         lastContactDate: new Date().toISOString()
       }];
     }
-    return { data: simulatedRecords };
+    return { data: { records: simulatedRecords } };
   };
 
   // שידור ההודעה ל-AI
@@ -242,30 +242,36 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
       // 1. בדיקת שלב אימות מאוחר של כספת (הזנת קוד) - awaiting_vault_password
       if (isAwaitingPassword || pendingVaultQuery) {
         if (textToSend.trim() === '1125') {
-          // קוד גישה חיובי - הפעלת שליפה מאחורי הקלעים
-          const topicToSearch = currentTopic || pendingVaultQuery || 'בנק מזרחי';
-          
+          // קוד גישה חיובי - הזרקה נקייה
           setIsAwaitingPassword(false);
           setPendingVaultQuery(null);
 
-          // קריאה מאובטחת ל-GAS או סימולציה מונחית
-          const response = await sendToNoaBackend('searchVault', { keyQuery: topicToSearch });
-          const fetchedMatched = response.data || [];
+          const topicToSearch = currentTopic || pendingVaultQuery || 'בנק מזרחי';
 
-          // בניית מחרוזת ממוקדת של מידע והזרקתו לבינה המלאכותית
-          const securePromptContent = `[REAL_VAULT_DATA]: ${JSON.stringify(fetchedMatched)} - Present ONLY these exact details to the user. Do NOT invent any numbers.`;
+          // Improve the Search Query בהתאם להנחיות
+          const cleanSearchTopic = topicToSearch
+            .replace(/(מה|פרטי|הזדהות|שלי|הסיסמה|כספת|בכספת|של|באיזה|סיסמה|חשבון|החשבון|אצלי|הפרטים|תראה|תראי|לי|תשמור|שמור|בבנק|בנק)/g, " ")
+            .trim()
+            .replace(/\s+/g, " ");
+          const keyQuery = cleanSearchTopic.length > 1 ? cleanSearchTopic : topicToSearch;
 
-          const systemMsgWrapper = {
-            id: 'system-inject-' + Math.random().toString(36).substring(7),
-            role: 'user' as const,
-            text: `אימות פעיל מול הכספת.\nמקור נתונים מהיימן:\n${securePromptContent}\nאנא פרט והצג את הנתונים הללו בשפה אנושית, ישירה וחיובית.`
-          };
+          // Call the backend API
+          const response = await sendToNoaBackend('searchVault', { keyQuery });
 
-          const adviceText = await getAdvisorAdvice([...messages, systemMsgWrapper], {
+          // Correct JSON Parsing
+          const records = response?.data?.records || [];
+
+          // Strict Injection
+          const injectedPrompt = "[REAL_VAULT_DATA]: " + JSON.stringify(records) + "\n\nUser asked: " + currentTopic;
+
+          const systemContext = {
             userName: user.displayName,
             balance: currentBalance,
             date: new Date().toISOString()
-          });
+          };
+
+          // Send injectedPrompt to getAdvisorResponse function
+          const adviceText = await getAdvisorResponse(injectedPrompt, systemContext);
 
           vaultExplanation = adviceText || `מידע מוצפן נשלף בהצלחה מיומן הכספת.`;
 
@@ -274,7 +280,7 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             role: 'assistant',
             text: vaultExplanation,
             timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-            vaultRecords: fetchedMatched
+            vaultRecords: records
           };
           setMessages(prev => [...prev, assistantMsg]);
           setIsLoading(false);
@@ -288,7 +294,6 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
           setIsAwaitingPassword(false);
           setPendingVaultQuery(null);
           
-          vaultExplanation = `🔒 בבקשה הזן את סיסמת הכספת לאימות כדי לגשת לפרטים רגישים אלו. (מפתח סימולציה: הקלד 1125)`;
           assistantMsg = {
             id: Math.random().toString(36).substring(7),
             role: 'assistant',

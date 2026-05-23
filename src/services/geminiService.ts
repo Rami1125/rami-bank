@@ -194,3 +194,13 @@ TONE AND LANGUAGE:
     return 'שגיאה בתקשורת מול מערכת העזר של נועה. אנא בדוק את מפתח ה-API שהוזן.';
   }
 }
+
+/**
+ * פונקציית מעטפת המקבלת פרומפט מועשר או מערך הודעות ומחזירה תגובה מנועה
+ */
+export async function getAdvisorResponse(promptOrMessages: any, currentStatus: any = {}): Promise<string> {
+  if (typeof promptOrMessages === 'string') {
+    return getAdvisorAdvice([{ role: 'user', text: promptOrMessages }], currentStatus);
+  }
+  return getAdvisorAdvice(promptOrMessages, currentStatus);
+}
