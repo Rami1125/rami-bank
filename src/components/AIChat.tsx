@@ -239,8 +239,24 @@ export default function AIChat({ user, onAddTransaction, currentBalance }: AICha
             }];
           }
 
-          vaultExplanation = `🔓 קוד האימות התקבל בהצלחה! השער הופשר וכספת המידע הרגיש פתוחה עבורך ל-60 שניות.\n\nהנה הפרטים המאובטחים שמצאתי לגבי "${pendingVaultQuery}":`;
           setPendingVaultQuery(null);
+
+          // הזרקת המידע האמיתי מהכספת לתוך ה-System Context של ה-LLM למניעת הזיות
+          const secureContextPrompt = `The password was correct. Here is the REAL data from the DB: ${JSON.stringify(fetchedMatched)}. Present this EXACT data to the user securely inside your response. Do NOT invent any numbers or mock information.`;
+          
+          const systemMsgWrapper = {
+            id: 'system-inject-' + Math.random().toString(36).substring(7),
+            role: 'user' as const,
+            text: `[SYSTEM CONTEXT: ${secureContextPrompt}]\nהסיסמה נכונה והגישה אושרה. אנא הצג למשתמש בעברית ובצורה מפורטת ומקצועית של נועה הבנקאית את הפרטים הללו בלבד ובאופן חיובי. אל תמציא נתונים אחרים.`
+          };
+
+          const adviceText = await getAdvisorAdvice([...messages, systemMsgWrapper], {
+            userName: user.displayName,
+            balance: currentBalance,
+            date: new Date().toISOString()
+          });
+
+          vaultExplanation = adviceText || `🔓 קוד האימות התקבל בהצלחה! השער הופשר וכספת המידע הרגיש פתוחה עבורך ל-60 שניות.\n\nהנה הפרטים המאובטחים שמצאתי לגבי:`;
           
           assistantMsg = {
             id: Math.random().toString(36).substring(7),

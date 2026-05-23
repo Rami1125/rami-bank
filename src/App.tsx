@@ -38,8 +38,12 @@ import BudgetManager from './components/BudgetManager';
 import RecoveryPlanView from './components/RecoveryPlanView';
 import VendorsList from './components/VendorsList';
 import VaultManager from './components/VaultManager';
+import LoginScreen from './components/LoginScreen';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('NOA_AUTHENTICATED') === 'true';
+  });
   const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors' | 'vault'>('dashboard');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -134,6 +138,22 @@ export default function App() {
     setShowSettings(false);
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('NOA_AUTHENTICATED');
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen 
+        onUnlock={() => {
+          setIsAuthenticated(true);
+          localStorage.setItem('NOA_AUTHENTICATED', 'true');
+        }} 
+      />
+    );
+  }
+
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-6 gap-4">
@@ -205,12 +225,21 @@ export default function App() {
             <div className="bg-white w-full rounded-t-3xl p-6 space-y-4 animate-slideUp border-t border-gray-200">
               <div className="flex justify-between items-center pb-2 border-b border-gray-100">
                 <h3 className="text-base font-bold text-gray-900">הגדרות ועוזר התקנה</h3>
-                <button 
-                  onClick={() => setShowSettings(false)} 
-                  className="p-1 px-3 bg-gray-100 hover:bg-red-50 hover:text-red-500 rounded-lg text-xs font-bold transition-all"
-                >
-                  סגור
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => { handleLogout(); setShowSettings(false); }}
+                    className="p-1 px-3 bg-red-50 text-red-650 hover:bg-red-100 rounded-lg text-xs font-bold transition-all"
+                  >
+                    התנתק
+                  </button>
+                  <button 
+                    onClick={() => setShowSettings(false)} 
+                    className="p-1 px-3 bg-gray-100 hover:bg-slate-200 rounded-lg text-xs font-bold transition-all"
+                  >
+                    סגור
+                  </button>
+                </div>
               </div>
 
               <form onSubmit={handleSaveSettings} className="space-y-4 font-sans text-xs font-semibold text-gray-700">

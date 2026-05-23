@@ -209,42 +209,61 @@ export default function Dashboard({
   const activeAlerts = getProactiveAlerts();
 
   return (
-    <div className="space-y-6 pb-24">
-      {/* Profile Header & Date */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-        <div>
-          <span className="text-xs text-gray-500 block">ברוך הבא לבית הפיננסי שלך</span>
-          <h2 className="text-xl font-bold text-gray-800">שלום, {user.displayName} 👋</h2>
+    <div className="space-y-6 pb-24 font-sans">
+      {/* Profile Header with Noa custom Notionist Avatar */}
+      <div className="bg-white p-4.5 rounded-[2rem] shadow-sm border border-slate-150/80 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-emerald-500/25 p-0.5 shadow-sm">
+            <img 
+              src="https://api.dicebear.com/7.x/notionists/svg?seed=Noa&backgroundColor=e2e8f0" 
+              alt="נועה הבנקאית" 
+              referrerPolicy="no-referrer"
+              className="w-full h-full rounded-full object-cover" 
+            />
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold block leading-none mb-1">ברוך הבא לבית הפיננסי שלך</span>
+            <h2 className="text-base font-black text-slate-850 leading-none">שלום, {user.displayName} 👋</h2>
+          </div>
         </div>
-        <div className="text-left bg-emerald-50 py-1.5 px-3 rounded-xl border border-emerald-100 flex items-center gap-1.5">
-          <Calendar className="w-4 h-4 text-emerald-600" />
-          <span className="text-xs font-semibold text-emerald-800 font-mono">מאי 2026</span>
+        <div className="bg-emerald-500/10 text-emerald-800 border border-emerald-500/20 py-1.5 px-3 rounded-2xl flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+          <span className="text-[11px] font-extrabold font-mono">מאי 2026</span>
         </div>
       </div>
 
-      {/* Main Balance and Cash Flow Summary */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden border border-slate-850">
-        <div className="absolute top-1/2 right-0 w-48 h-48 bg-emerald-500 rounded-full blur-3xl opacity-15 -mr-12 -mt-24 pointer-events-none"></div>
-        <span className="text-xs uppercase tracking-wider opacity-65 block font-medium">יתרה עדכנית משולבת</span>
-        <div className="text-3xl font-bold mt-1 font-mono tracking-tight">{currentBalance.toLocaleString()} ₪</div>
+      {/* Premium Glassmorphic Balance Card with Ambient Glow */}
+      <div className="bg-slate-950 text-white rounded-[2.5rem] p-6.5 shadow-xl relative overflow-hidden border border-slate-850">
+        <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-12 w-40 h-40 bg-teal-500/15 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex justify-between items-center relative z-10">
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest block">יתרה כוללת לעמוד</span>
+          <div className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+        </div>
+        
+        <div className="text-3xl font-black mt-2 font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-emerald-400 relative z-10">
+          {currentBalance.toLocaleString()} ₪
+        </div>
 
-        <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-800/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
-              <TrendingUp className="w-5 h-5" />
+        <div className="grid grid-cols-2 gap-4 mt-6 pt-5 border-t border-slate-800/80 relative z-10">
+          <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-850 flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl">
+              <TrendingUp className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 block">הכנסות החודש</span>
-              <span className="text-sm font-semibold font-mono text-emerald-400">+{totalIncome.toLocaleString()} ₪</span>
+              <span className="text-[9px] text-slate-400 block font-bold">הכנסות החודש</span>
+              <span className="text-xs font-bold font-mono text-emerald-400">+{totalIncome.toLocaleString()} ₪</span>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-rose-500/10 text-rose-400 rounded-xl">
-              <TrendingDown className="w-5 h-5" />
+          
+          <div className="bg-slate-900/40 p-3 rounded-2xl border border-slate-850 flex items-center gap-3">
+            <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl">
+              <TrendingDown className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 block">הוצאות החודש</span>
-              <span className="text-sm font-semibold font-mono text-rose-400">-{totalExpense.toLocaleString()} ₪</span>
+              <span className="text-[9px] text-slate-400 block font-bold">הוצאות החודש</span>
+              <span className="text-xs font-bold font-mono text-rose-400">-{totalExpense.toLocaleString()} ₪</span>
             </div>
           </div>
         </div>
