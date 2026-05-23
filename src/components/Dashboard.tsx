@@ -14,7 +14,8 @@ import {
   Calendar, 
   X, 
   CheckCircle, 
-  ChevronLeft 
+  ChevronLeft,
+  Download
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -159,6 +160,49 @@ export default function Dashboard({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleExportCSV = () => {
+    if (transactions.length === 0) return;
+
+    // כותרות עמודות הדוח
+    const headers = ['מזהה', 'תאריך', 'סוג תנועה', 'קטגוריה', 'בית עסק / מקור', 'סכום (₪)', 'הערה'];
+    
+    // רשומות המידע
+    const rows = transactions.map(t => [
+      t.id,
+      t.date,
+      t.type === 'income' ? 'הכנסה' : 'הוצאה',
+      t.category,
+      t.vendorName || '',
+      t.amount,
+      t.freeText || ''
+    ]);
+
+    // בניית תוכן ה-CSV תוך טיפול בפסיקים ומרכאות כפולות
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(val => {
+          const escaped = String(val).replace(/"/g, '""');
+          if (escaped.includes(',') || escaped.includes('\n') || escaped.includes('"')) {
+            return `"${escaped}"`;
+          }
+          return escaped;
+        }).join(',')
+      )
+    ].join('\n');
+
+    // הוספת סימן BOM של UTF-8 (uFEFF) כדי שהעברית תוצג בצורה מושלמת באקסל
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `noa_financial_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Generate dynamic proactive warnings from Noa Based on parameters
@@ -443,16 +487,32 @@ export default function Dashboard({
 
       {/* Recent Transactions Tracker with deletion */}
       <div className="space-y-3">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center sm:flex-row flex-wrap gap-2">
           <h3 className="text-base font-bold text-gray-800">עסקאות אחרונות</h3>
-          <button 
-            type="button"
-            onClick={() => setShowQuickForm(!showQuickForm)}
-            className="text-xs font-semibold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-1"
-          >
-            <PlusCircle className="w-4 h-4" />
-            רישום מהיר
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={handleExportCSV}
+              disabled={transactions.length === 0}
+              className={`text-xs font-semibold py-1.5 px-3 rounded-xl transition-all flex items-center gap-1 ${
+                transactions.length === 0
+                  ? 'text-slate-400 bg-slate-50 cursor-not-allowed border border-slate-100'
+                  : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200/30'
+              }`}
+              title="ייצוא כל היסטוריית העסקאות לקובץ Excel CSV"
+            >
+              <Download className="w-4 h-4 text-slate-500" />
+              ייצוא דוח פיננסי
+            </button>
+            <button 
+              type="button"
+              onClick={() => setShowQuickForm(!showQuickForm)}
+              className="text-xs font-semibold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-1"
+            >
+              <PlusCircle className="w-4 h-4" />
+              רישום מהיר
+            </button>
+          </div>
         </div>
 
         {/* Quick Add Form modal overlay */}
