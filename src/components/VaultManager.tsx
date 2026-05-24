@@ -17,7 +17,8 @@ import {
   User,
   CreditCard,
   Landmark,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useVaultSync, VaultRecord } from '../hooks/useVaultSync';
@@ -49,6 +50,11 @@ export default function VaultManager() {
 
   // Active edit item to track if we're updating
   const [activeEditKey, setActiveEditKey] = useState<string | null>(null);
+
+  // Export CSV pin modal state
+  const [showExportPinModal, setShowExportPinModal] = useState(false);
+  const [exportPin, setExportPin] = useState('');
+  const [exportPinError, setExportPinError] = useState('');
 
   // Load records once unlocked
   const loadVaultRecords = async (silent = false) => {
@@ -221,6 +227,47 @@ export default function VaultManager() {
     }));
   };
 
+  const handleExportCsvSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (exportPin === '1125') {
+      try {
+        const csvHeaders = ["שם שירות", "שם משתמש", "סיסמה", "חשבון בנק", "פרטי קשר", "תאריך עדכון"];
+        const csvRows = records.map(rec => [
+          rec.keyName,
+          rec.username || '',
+          rec.password || '',
+          rec.bankAccount || '',
+          rec.contactInfo || '',
+          rec.lastContactDate ? new Date(rec.lastContactDate).toLocaleDateString('he-IL') : ''
+        ]);
+
+        const csvContent = "\uFEFF" + [
+          csvHeaders.map(field => `"${field.replace(/"/g, '""')}"`).join(","),
+          ...csvRows.map(row => row.map(field => `"${field.replace(/"/g, '""')}"`).join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `כספת_ספקים_ייצוא_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setShowExportPinModal(false);
+        setExportPin('');
+        setExportPinError('');
+      } catch (err) {
+        console.error('Failed to export CSV:', err);
+        setExportPinError('שגיאה ביצירת קובץ ה-CSV');
+      }
+    } else {
+      setExportPinError('קוד PIN שגוי. אנא נסה שוב (רמז: 1125)');
+    }
+  };
+
   return (
     <div className="space-y-6 text-right font-sans max-w-md mx-auto" dir="rtl">
       
@@ -316,6 +363,26 @@ export default function VaultManager() {
                 className="text-[10px] text-red-600 hover:text-red-700 bg-red-50 py-1.5 px-3 rounded-xl border border-red-100"
               >
                 נעל כספת
+              </button>
+            </div>
+
+            {/* Export and Action row */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-4 flex justify-between items-center shadow-sm">
+              <div className="space-y-0.5 text-right">
+                <h4 className="text-xs font-black text-slate-800">גיבוי וייצוא נתונים</h4>
+                <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">ייצוא המידע הרגיש לקובץ גיבוי מאובטח במערכת.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setExportPin('');
+                  setExportPinError('');
+                  setShowExportPinModal(true);
+                }}
+                className="bg-slate-900 hover:bg-slate-800 text-white hover:text-emerald-400 p-2.5 px-4 rounded-xl flex items-center gap-1.5 text-[11px] font-bold transition-all cursor-pointer select-none active:scale-95 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>ייצוא ל-CSV מאובטח</span>
               </button>
             </div>
 
@@ -553,6 +620,77 @@ export default function VaultManager() {
               )}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PIN Verification Modal for Export */}
+      <AnimatePresence>
+        {showExportPinModal && (
+          <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 pointer-events-auto text-right" dir="rtl" onClick={() => setShowExportPinModal(false)}>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-100 relative pointer-events-auto"
+            >
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+                  <Lock className="w-5 h-5 text-emerald-500 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">אימות PIN לייצוא מאובטח</h3>
+                  <p className="text-[11px] text-slate-500 font-semibold leading-relaxed mt-1">
+                    לצורך הגנה על המידע הרגיש בכספת, יש להזין את קוד ה-PIN האישי שלך כדי לאשר את הורדת קובץ ה-CSV.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleExportCsvSubmit} className="space-y-4 font-sans">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block text-right">קוד כספת (PIN)</label>
+                  <input
+                    type="password"
+                    placeholder="הזן קוד PIN..."
+                    value={exportPin}
+                    onChange={(e) => {
+                      setExportPin(e.target.value);
+                      setExportPinError('');
+                    }}
+                    className="w-full text-center text-base font-bold tracking-[0.4em] p-2.5 border border-slate-200 bg-slate-50 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    autoFocus
+                  />
+                </div>
+
+                {exportPinError && (
+                  <div className="bg-red-50 border border-red-100/80 text-red-600 p-2.5 rounded-xl flex items-center gap-2 text-[10px] font-bold">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <span>{exportPinError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExportPinModal(false);
+                      setExportPin('');
+                      setExportPinError('');
+                    }}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-emerald-600/10"
+                  >
+                    אמת וייצא קובץ
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
