@@ -27,11 +27,15 @@ import {
   fetchRecoveryPlans,
   addTransaction,
   deleteTransaction,
+  updateTransaction,
   saveBudgetsList,
   saveRecoveryPlan,
   updateUserProfile,
-  authService
+  authService,
+  db,
+  isRealConfig
 } from './firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 import Dashboard from './components/Dashboard';
 import AIChat from './components/AIChat';
@@ -102,6 +106,37 @@ export default function App() {
     loadInitialData();
   }, []);
 
+  // Real-time synchronization for Transactions & Budgets
+  useEffect(() => {
+    let unsubscribeTx: (() => void) | null = null;
+
+    if (db && isRealConfig && user) {
+      try {
+        const qTx = query(collection(db, 'transactions'), where('userId', '==', user.uid));
+        unsubscribeTx = onSnapshot(qTx, async (snapshot) => {
+          const items: Transaction[] = [];
+          snapshot.forEach((docSnap) => {
+            items.push({ id: docSnap.id, ...docSnap.data() } as Transaction);
+          });
+          items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setTransactions(items);
+          
+          // Fetch budgets to sync visually in progress bars
+          const updatedBudgets = await fetchBudgets(user.uid);
+          setBudgets(updatedBudgets);
+        }, (error) => {
+          console.error("Firestore live transactions subscription failure:", error);
+        });
+      } catch (err) {
+        console.error("Failed to setup real-time transactions listener:", err);
+      }
+    }
+
+    return () => {
+      if (unsubscribeTx) unsubscribeTx();
+    };
+  }, [user?.uid]);
+
   const handleCreateTransaction = async (txData: Omit<Transaction, 'id' | 'userId'>) => {
     if (!user) return;
     const item: Transaction = {
@@ -109,21 +144,37 @@ export default function App() {
       userId: user.uid
     };
     const created = await addTransaction(item);
-    setTransactions(prev => [created, ...prev]);
-
-    // Force re-running budgets fetching to sync budget limits visually in progress bars!
-    const updatedBudgets = await fetchBudgets(user.uid);
-    setBudgets(updatedBudgets);
+    
+    // Fallback if live listener is not running
+    if (!db || !isRealConfig) {
+      setTransactions(prev => [created, ...prev]);
+      const updatedBudgets = await fetchBudgets(user.uid);
+      setBudgets(updatedBudgets);
+    }
   };
 
   const handleDeleteTransactionItem = async (txId: string) => {
     if (!user) return;
     await deleteTransaction(user.uid, txId);
-    setTransactions(prev => prev.filter(t => t.id !== txId));
+    
+    // Fallback if live listener is not running
+    if (!db || !isRealConfig) {
+      setTransactions(prev => prev.filter(t => t.id !== txId));
+      const updatedBudgets = await fetchBudgets(user.uid);
+      setBudgets(updatedBudgets);
+    }
+  };
 
-    // Force re-running budgets fetching to synch progression bars
-    const updatedBudgets = await fetchBudgets(user.uid);
-    setBudgets(updatedBudgets);
+  const handleUpdateTransactionItem = async (updatedTx: Transaction) => {
+    if (!user) return;
+    await updateTransaction(updatedTx);
+    
+    // Fallback if live listener is not running
+    if (!db || !isRealConfig) {
+      setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+      const updatedBudgets = await fetchBudgets(user.uid);
+      setBudgets(updatedBudgets);
+    }
   };
 
   const handleUpdateBudgets = async (newBudgetsList: Budget[]) => {
@@ -351,6 +402,7 @@ export default function App() {
               budgets={budgets} 
               onAddTransaction={handleCreateTransaction} 
               onDeleteTransaction={handleDeleteTransactionItem} 
+              onUpdateTransaction={handleUpdateTransactionItem}
               onNavigateToChat={() => setActiveTab('chat')}
             />
           )}

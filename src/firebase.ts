@@ -308,6 +308,43 @@ export async function deleteTransaction(userId: string, txId: string): Promise<v
   localStorage.setItem('noa_transactions', JSON.stringify(items));
 }
 
+export async function updateTransaction(transaction: Transaction): Promise<Transaction> {
+  if (!transaction.id) throw new Error("Transaction ID is required for updates");
+
+  // Fetch cached items to align budget adjustments
+  const cached = localStorage.getItem('noa_transactions');
+  let items: Transaction[] = cached ? JSON.parse(cached) : [];
+  const oldTx = items.find(i => i.id === transaction.id);
+
+  if (oldTx) {
+    if (oldTx.type === 'expense') {
+      await adjustBudgetUsage(transaction.userId, oldTx.category, 'expense', -oldTx.amount);
+    }
+    if (transaction.type === 'expense') {
+      await adjustBudgetUsage(transaction.userId, transaction.category, 'expense', transaction.amount);
+    }
+  }
+
+  if (db && isRealConfig) {
+    try {
+      const { id, ...data } = transaction;
+      await setDoc(doc(db, 'transactions', transaction.id), data);
+    } catch (e) {
+      console.warn("Firestore transaction update error, using local fallback:", e);
+    }
+  }
+
+  const index = items.findIndex(i => i.id === transaction.id);
+  if (index >= 0) {
+    items[index] = transaction;
+  } else {
+    items.unshift(transaction);
+  }
+  localStorage.setItem('noa_transactions', JSON.stringify(items));
+
+  return transaction;
+}
+
 // Helper to auto update category progression limits synchronously
 async function adjustBudgetUsage(userId: string, category: string, type: 'income' | 'expense', amount: number) {
   if (type !== 'expense') return; // Income doesn't affect standard expense budgets
