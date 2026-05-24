@@ -9,9 +9,40 @@ import cors from 'cors';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
+import { initializeApp as initializeServerApp, getApps as getServerApps, getApp as getServerApp } from 'firebase/app';
+import { getFirestore as getServerFirestore, doc as serverDoc, setDoc as serverSetDoc } from 'firebase/firestore';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// Read firebase configuration dynamically via fs to prevent compilation/module import type errors
+const firebaseConfig = (() => {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error reading firebase-applet-config.json in backend:', err);
+  }
+  return {};
+})();
+
+let serverFirestoreDb: any = null;
+function getServerFirestoreDb() {
+  if (!serverFirestoreDb) {
+    const isRealConfig = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'dummy-api-key' && firebaseConfig.projectId !== 'dummy-project';
+    if (isRealConfig) {
+      try {
+        const app = getServerApps().length === 0 ? initializeServerApp(firebaseConfig) : getServerApp();
+        serverFirestoreDb = getServerFirestore(app);
+      } catch (err) {
+        console.error("Failed to initialize Firestore on server:", err);
+      }
+    }
+  }
+  return serverFirestoreDb;
+}
 
 const app = express();
 const PORT = 3000;
@@ -223,6 +254,86 @@ app.post('/api/config', (req, res) => {
     gasToken: (gasToken || 'NOA_SECURE_VAULT_TOKEN_2026').trim()
   });
   res.json({ success: true });
+});
+
+// REAL-TIME SYNCHRONIZATION ENDPOINT FOR GOOGLE SHEETS & FIRESTORE
+app.post('/api/vault/sync', async (req, res) => {
+  const { token, keyName, username, password, bankAccount, contactInfo, lastContactDate, lastAmountUpdated } = req.body;
+  const savedConfig = readGasConfig();
+  const validToken = savedConfig.gasToken || 'NOA_SECURE_VAULT_TOKEN_2026';
+
+  // Basic security token verification matching GAS Code.gs API_TOKEN
+  if (!token || token !== validToken) {
+    console.warn(`Unauthorized vault sync sync attempt rejected. Token: ${token}`);
+    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid security token' });
+  }
+
+  if (!keyName || keyName.trim() === '') {
+    return res.status(400).json({ success: false, error: 'Bad Request: keyName is required' });
+  }
+
+  const record = {
+    keyName: keyName.trim(),
+    username: (username || '').trim(),
+    password: (password || '').trim(),
+    bankAccount: (bankAccount || '').trim(),
+    contactInfo: (contactInfo || '').trim(),
+    lastContactDate: lastContactDate || new Date().toISOString(),
+    lastAmountUpdated: (lastAmountUpdated || '').trim()
+  };
+
+  try {
+    // 1. Synchronize to Firebase Firestore if configured
+    const db = getServerFirestoreDb();
+    let isDbSynced = false;
+    if (db) {
+      const docRef = serverDoc(db, 'vault', record.keyName);
+      await serverSetDoc(docRef, record, { merge: true });
+      isDbSynced = true;
+      console.log(`[Firestore] Successfully synchronized secure vault item: '${record.keyName}'`);
+    } else {
+      console.log(`[Server Memory Only] Firestore was not configured, proceeding with local fallback storage for item: '${record.keyName}'`);
+    }
+
+    // 2. Local fallback storage to guarantee immediate rich client visualization in AI Studio
+    let localRecords = [];
+    const LOCAL_VAULT_PATH = path.join(process.cwd(), 'synced_vault_records.json');
+    if (fs.existsSync(LOCAL_VAULT_PATH)) {
+      try {
+        localRecords = JSON.parse(fs.readFileSync(LOCAL_VAULT_PATH, 'utf8'));
+      } catch (err) {
+        localRecords = [];
+      }
+    }
+
+    localRecords = localRecords.filter((r: any) => r.keyName !== record.keyName);
+    localRecords.push(record);
+    fs.writeFileSync(LOCAL_VAULT_PATH, JSON.stringify(localRecords, null, 2), 'utf8');
+
+    return res.json({
+      success: true,
+      message: 'Vault record synchronized successfully',
+      syncedWithFirestore: isDbSynced,
+      record
+    });
+  } catch (error: any) {
+    console.error('[Sync Error] Failed to synchronize vault record:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Synchronization exception occurred' });
+  }
+});
+
+// Read synced records API for real-time frontend integration
+app.get('/api/vault/synced', (req, res) => {
+  const LOCAL_VAULT_PATH = path.join(process.cwd(), 'synced_vault_records.json');
+  if (fs.existsSync(LOCAL_VAULT_PATH)) {
+    try {
+      const records = JSON.parse(fs.readFileSync(LOCAL_VAULT_PATH, 'utf8'));
+      return res.json({ success: true, records });
+    } catch (err) {
+      return res.json({ success: true, records: [] });
+    }
+  }
+  return res.json({ success: true, records: [] });
 });
 
 // Setup Vite & Static Assets serving

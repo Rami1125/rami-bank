@@ -70,3 +70,34 @@ export interface ChatMessage {
   adviceType?: 'warning' | 'tip' | 'praise' | 'info';
   vaultRecords?: any[];
 }
+
+export interface StandingOrder {
+  id: string;
+  userId: string;
+  vendorName: string;
+  category: string;
+  amount: number;
+  frequency: 'weekly' | 'bimonthly' | 'monthly' | 'yearly';
+  startDate: string;
+  nextPaymentDate: string;
+  status: 'active' | 'paused';
+  paymentHistory: {
+    id: string;
+    date: string;
+    amount: number;
+    status: 'paid' | 'failed';
+  }[];
+}
+
+export interface Loan {
+  id: string;
+  userId: string;
+  source: 'bank' | 'private';
+  lenderName: string;
+  originalAmount: number;
+  remainingAmount: number;
+  monthlyPayment: number;
+  interestRate: number;
+  startDate: string;
+}
+

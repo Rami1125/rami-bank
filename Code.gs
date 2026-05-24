@@ -603,3 +603,95 @@ function handleSaveLoan(ss, payload) {
     return buildResponse(true, "Loan added successfully", 200, { id: id });
   }
 }
+
+/**
+ * טריגר אוטומטי לחלוטין (Installed Trigger) מסוג onChange המזהה שינויים בגיליון
+ * ומבצע סנכרון בזמן אמת של השורה שהשתנתה אל מסד הנתונים Firestore
+ */
+function onChange(e) {
+  try {
+    const ss = e ? e.source : SpreadsheetApp.getActiveSpreadsheet();
+    const activeSheet = ss.getActiveSheet();
+    const activeSheetName = activeSheet.getName();
+    
+    // אנו מאזינים ומסנכרנים אך ורק את מידע כספת המשתמש (UserVault)
+    if (activeSheetName !== "UserVault") {
+      Logger.log("שינוי זוהה בגיליון " + activeSheetName + ", דילוג על סנכרון הכספת.");
+      return;
+    }
+    
+    const activeRange = activeSheet.getActiveRange();
+    if (!activeRange) {
+      Logger.log("לא נמצא טווח פעיל לעדכון.");
+      return;
+    }
+    
+    const startRow = activeRange.getRow();
+    const endRow = activeRange.getLastRow();
+    
+    Logger.log("מזהה שינוי בכספת בשורות: " + startRow + " עד " + endRow);
+    
+    for (let rowIdx = startRow; rowIdx <= endRow; rowIdx++) {
+      // דלג על שורת הכותרות (Headers) בשורה מספר 1
+      if (rowIdx === 1) continue;
+      
+      const rowValues = activeSheet.getRange(rowIdx, 1, 1, 7).getValues()[0];
+      const keyName = String(rowValues[0] || "").trim();
+      
+      if (!keyName) {
+        Logger.log("שורה " + rowIdx + " בעלת מפתח ריק - מדלג על סנכרון.");
+        continue;
+      }
+      
+      const payload = {
+        token: API_TOKEN,
+        keyName: keyName,
+        username: String(rowValues[1] || "").trim(),
+        password: String(rowValues[2] || "").trim(),
+        bankAccount: String(rowValues[3] || "").trim(),
+        contactInfo: String(rowValues[4] || "").trim(),
+        lastContactDate: rowValues[5] ? new Date(rowValues[5]).toISOString() : new Date().toISOString(),
+        lastAmountUpdated: String(rowValues[6] || "").trim()
+      };
+      
+      Logger.log("משדר רשומת כספת פיננסית מעודכנת עבור ספק: " + keyName);
+      sendVaultRecordToBackend(payload);
+    }
+  } catch (err) {
+    Logger.log("שגיאה במפעיל טריגר onChange: " + err.toString());
+  }
+}
+
+/**
+ * פונקציית עזר לשידור רשומת הכספת המעודכנת לצד השרת באמצעות קריאת HTTP POST מאובטחת
+ */
+function sendVaultRecordToBackend(payload) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let backendUrl = scriptProperties.getProperty("BACKEND_URL");
+  
+  if (!backendUrl) {
+    // כתובת השרת הדינמית כפי שמופיעה ב-ADDITIONAL_METADATA תחת סביבת ה-AI Studio
+    backendUrl = "https://ais-dev-qlk2bt7potxv6bghdwimw5-790638938011.europe-west2.run.app";
+    scriptProperties.setProperty("BACKEND_URL", backendUrl);
+  }
+  
+  const endpoint = backendUrl + "/api/vault/sync";
+  Logger.log("משדר אל נקודת הקצה: " + endpoint);
+  
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  
+  try {
+    const response = UrlFetchApp.fetch(endpoint, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    Logger.log("עדכון הסנכרון הושלם - סטטוס קוד: " + responseCode + ", תגובה: " + responseText);
+  } catch (err) {
+    Logger.log("כשל בביצוע קריאת HTTP POST ל-Backend: " + err.toString());
+  }
+}

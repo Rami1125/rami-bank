@@ -19,7 +19,7 @@ import {
   where,
   getDocFromServer
 } from 'firebase/firestore';
-import { UserProfile, Transaction, Budget, Vendor, RecoveryPlan } from './types';
+import { UserProfile, Transaction, Budget, Vendor, RecoveryPlan, StandingOrder, Loan } from './types';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Detect if we have real configured keys vs placeholder values
@@ -117,6 +117,67 @@ const DEFAULT_RECOVERY_PLANS: RecoveryPlan[] = [
   }
 ];
 
+const DEFAULT_STANDING_ORDERS: StandingOrder[] = [
+  {
+    id: 'so-1',
+    userId: 'guest-123',
+    vendorName: 'נטפליקס ישראל',
+    category: 'פנאי ובידור',
+    amount: 69.90,
+    frequency: 'monthly',
+    startDate: '2026-01-01',
+    nextPaymentDate: '2026-06-01',
+    status: 'active',
+    paymentHistory: [
+      { id: 'sph-1', date: '2026-01-01', amount: 69.90, status: 'paid' },
+      { id: 'sph-2', date: '2026-02-01', amount: 69.90, status: 'paid' },
+      { id: 'sph-3', date: '2026-03-01', amount: 69.90, status: 'paid' },
+      { id: 'sph-4', date: '2026-04-01', amount: 69.90, status: 'paid' },
+      { id: 'sph-5', date: '2026-05-01', amount: 69.90, status: 'paid' }
+    ]
+  },
+  {
+    id: 'so-2',
+    userId: 'guest-123',
+    vendorName: 'חברת החשמל לישראל',
+    category: 'דיור וחשבונות',
+    amount: 320.00,
+    frequency: 'bimonthly',
+    startDate: '2026-02-15',
+    nextPaymentDate: '2026-06-15',
+    status: 'active',
+    paymentHistory: [
+      { id: 'sph-6', date: '2026-02-15', amount: 320.00, status: 'paid' },
+      { id: 'sph-7', date: '2026-04-15', amount: 310.00, status: 'paid' }
+    ]
+  }
+];
+
+const DEFAULT_LOANS: Loan[] = [
+  {
+    id: 'loan-1',
+    userId: 'guest-123',
+    source: 'bank',
+    lenderName: 'בנק הפועלים',
+    originalAmount: 45000,
+    remainingAmount: 32000,
+    monthlyPayment: 1150,
+    interestRate: 4.8,
+    startDate: '2025-01-10'
+  },
+  {
+    id: 'loan-2',
+    userId: 'guest-123',
+    source: 'private',
+    lenderName: 'משפחה - סיוע לרכישת רכב',
+    originalAmount: 15000,
+    remainingAmount: 4500,
+    monthlyPayment: 500,
+    interestRate: 0,
+    startDate: '2025-06-01'
+  }
+];
+
 // Helper to initialize LocalStorage if empty
 function initializeLocalStorageIfEmpty() {
   if (!localStorage.getItem('noa_user')) {
@@ -130,6 +191,12 @@ function initializeLocalStorageIfEmpty() {
   }
   if (!localStorage.getItem('noa_plans')) {
     localStorage.setItem('noa_plans', JSON.stringify(DEFAULT_RECOVERY_PLANS));
+  }
+  if (!localStorage.getItem('noa_standing_orders')) {
+    localStorage.setItem('noa_standing_orders', JSON.stringify(DEFAULT_STANDING_ORDERS));
+  }
+  if (!localStorage.getItem('noa_loans')) {
+    localStorage.setItem('noa_loans', JSON.stringify(DEFAULT_LOANS));
   }
 }
 if (typeof window !== 'undefined') {
@@ -321,6 +388,126 @@ export async function saveRecoveryPlan(plan: RecoveryPlan): Promise<void> {
     } catch (e) {
       console.warn("Firestore recovery plan write failed:", e);
     }
+  }
+}
+
+// 5. Standing Orders Management
+export async function fetchStandingOrders(userId: string): Promise<StandingOrder[]> {
+  if (db && isRealConfig) {
+    try {
+      const q = query(collection(db, 'standing_orders'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      const items: StandingOrder[] = [];
+      querySnapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as StandingOrder);
+      });
+      if (items.length > 0) return items;
+    } catch (e) {
+      console.warn("Firestore standing orders lookup failure, using local cache", e);
+    }
+  }
+  const cached = localStorage.getItem('noa_standing_orders');
+  return cached ? JSON.parse(cached) : DEFAULT_STANDING_ORDERS;
+}
+
+export async function saveStandingOrder(so: StandingOrder): Promise<StandingOrder> {
+  const newSo = { ...so, id: so.id || Math.random().toString(36).substring(2, 9) };
+  
+  if (db && isRealConfig) {
+    try {
+      const { id, ...data } = newSo;
+      await setDoc(doc(db, 'standing_orders', newSo.id), data);
+    } catch (e) {
+      console.warn("Firestore error writing standing order, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_standing_orders');
+  let items: StandingOrder[] = cached ? JSON.parse(cached) : [];
+  const index = items.findIndex(item => item.id === newSo.id);
+  if (index >= 0) {
+    items[index] = newSo;
+  } else {
+    items.unshift(newSo);
+  }
+  localStorage.setItem('noa_standing_orders', JSON.stringify(items));
+  return newSo;
+}
+
+export async function deleteStandingOrder(userId: string, soId: string): Promise<void> {
+  if (db && isRealConfig) {
+    try {
+      await deleteDoc(doc(db, 'standing_orders', soId));
+    } catch (e) {
+      console.warn("Firestore error deleting standing order, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_standing_orders');
+  if (cached) {
+    let items: StandingOrder[] = JSON.parse(cached);
+    items = items.filter(item => item.id !== soId);
+    localStorage.setItem('noa_standing_orders', JSON.stringify(items));
+  }
+}
+
+// 6. Loans Management
+export async function fetchLoans(userId: string): Promise<Loan[]> {
+  if (db && isRealConfig) {
+    try {
+      const q = query(collection(db, 'loans'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      const items: Loan[] = [];
+      querySnapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as Loan);
+      });
+      if (items.length > 0) return items;
+    } catch (e) {
+      console.warn("Firestore loans lookup failure, using local cache", e);
+    }
+  }
+  const cached = localStorage.getItem('noa_loans');
+  return cached ? JSON.parse(cached) : DEFAULT_LOANS;
+}
+
+export async function saveLoan(loan: Loan): Promise<Loan> {
+  const newLoan = { ...loan, id: loan.id || Math.random().toString(36).substring(2, 9) };
+
+  if (db && isRealConfig) {
+    try {
+      const { id, ...data } = newLoan;
+      await setDoc(doc(db, 'loans', newLoan.id), data);
+    } catch (e) {
+      console.warn("Firestore error writing loan, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_loans');
+  let items: Loan[] = cached ? JSON.parse(cached) : [];
+  const index = items.findIndex(item => item.id === newLoan.id);
+  if (index >= 0) {
+    items[index] = newLoan;
+  } else {
+    items.unshift(newLoan);
+  }
+  localStorage.setItem('noa_loans', JSON.stringify(items));
+  return newLoan;
+}
+
+export async function deleteLoan(userId: string, loanId: string): Promise<void> {
+  if (db && isRealConfig) {
+    try {
+      await deleteDoc(doc(db, 'loans', loanId));
+    } catch (e) {
+      console.warn("Firestore error deleting loan, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_loans');
+  if (cached) {
+    let items: Loan[] = JSON.parse(cached);
+    items = items.filter(item => item.id !== loanId);
+    localStorage.setItem('noa_loans', JSON.stringify(items));
   }
 }
 

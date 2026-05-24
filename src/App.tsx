@@ -16,7 +16,8 @@ import {
   Coins,
   ShieldCheck,
   Building,
-  Lock
+  Lock,
+  CreditCard
 } from 'lucide-react';
 import { UserProfile, Transaction, Budget, RecoveryPlan } from './types';
 import { 
@@ -39,12 +40,13 @@ import RecoveryPlanView from './components/RecoveryPlanView';
 import VendorsList from './components/VendorsList';
 import VaultManager from './components/VaultManager';
 import LoginScreen from './components/LoginScreen';
+import FinancialModule from './components/FinancialModule';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('NOA_AUTHENTICATED') === 'true';
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors' | 'vault'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'budget' | 'plan' | 'vendors' | 'vault' | 'commitments'>('dashboard');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -385,6 +387,10 @@ export default function App() {
             <VendorsList />
           )}
 
+          {activeTab === 'commitments' && (
+            <FinancialModule user={user} currentBalance={currentOverallCash} />
+          )}
+
           {activeTab === 'vault' && (
             <VaultManager />
           )}
@@ -437,6 +443,17 @@ export default function App() {
           >
             <Coins className="w-5 h-5" />
             <span className="text-[10px]">תוכנית הבראה</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('commitments')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+              activeTab === 'commitments' ? 'text-emerald-500 scale-105 font-bold' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <CreditCard className="w-5 h-5" />
+            <span className="text-[10px]">התחייבויות</span>
           </button>
 
           <button

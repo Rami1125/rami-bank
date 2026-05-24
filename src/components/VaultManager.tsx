@@ -72,15 +72,57 @@ export default function VaultManager() {
           lastContactDate: new Date().toISOString()
         }
       ];
-      setRecords(demoRecords);
+
+      // Fetch freshly synced records from real-time sheet connection (Node sync server)
+      let mergedRecords = [...demoRecords];
+      try {
+        const response = await fetch('/api/vault/synced');
+        const data = await response.json();
+        if (data && data.success && data.records && data.records.length > 0) {
+          const synced: VaultRecord[] = data.records;
+          synced.forEach(syncRec => {
+            mergedRecords = mergedRecords.filter(r => r.keyName !== syncRec.keyName);
+            mergedRecords.push(syncRec);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load synced server vault items:', err);
+      }
+
+      // Filter by searchQuery if present in sandbox mode
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase();
+        mergedRecords = mergedRecords.filter(r => 
+          r.keyName.toLowerCase().includes(q) || 
+          (r.username && r.username.toLowerCase().includes(q)) ||
+          (r.bankAccount && r.bankAccount.toLowerCase().includes(q))
+        );
+      }
+
+      setRecords(mergedRecords);
       return;
     }
 
     try {
       const results = await searchVaultSecure(searchQuery, '1125');
-      if (results) {
-        setRecords(results);
+      let mergedRecords = results ? [...results] : [];
+      
+      try {
+        const response = await fetch('/api/vault/synced');
+        const data = await response.json();
+        if (data && data.success && data.records && data.records.length > 0) {
+          const synced: VaultRecord[] = data.records;
+          synced.forEach(syncRec => {
+            // Prioritize live-synced values from Google Sheets / Firestore
+            mergedRecords = mergedRecords.filter(r => r.keyName !== syncRec.keyName);
+            mergedRecords.push(syncRec);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load synced server vault items:', err);
       }
+
+      setRecords(mergedRecords);
     } catch (err: any) {
       console.error('Failed to load secure vault records:', err);
     }

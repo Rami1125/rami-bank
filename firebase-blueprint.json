@@ -67,6 +67,21 @@
         "milestones": { "type": "array" }
       },
       "required": ["userId", "targetGoals", "timeline", "status"]
+    },
+    "VaultItem": {
+      "title": "Vault Item",
+      "description": "Secure vault items synchronized directly from Google Sheets.",
+      "type": "object",
+      "properties": {
+        "keyName": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "bankAccount": { "type": "string" },
+        "contactInfo": { "type": "string" },
+        "lastContactDate": { "type": "string" },
+        "lastAmountUpdated": { "type": "string" }
+      },
+      "required": ["keyName"]
     }
   },
   "firestore": {
@@ -89,6 +104,10 @@
     "/recovery_plans/{planId}": {
       "schema": "RecoveryPlan",
       "description": "Dynamic structural plans recommended by AI advisor to recover positive balance."
+    },
+    "/vault/{vaultId}": {
+      "schema": "VaultItem",
+      "description": "Secure configuration and credentials stored in user vault."
     }
   }
 }
