@@ -31,6 +31,16 @@ import {
 import { useVendorsSync, Vendor } from '../hooks/useVendorsSync';
 import { motion, AnimatePresence } from 'motion/react';
 import SecureVendorModal from './SecureVendorModal';
+import { 
+  db, 
+  isRealConfig, 
+  handleFirestoreError, 
+  OperationType, 
+  fetchVendorsFirestore, 
+  saveVendorFirestore, 
+  deleteVendorFirestore 
+} from '../firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 // מיפוי קטגוריות לאיקונים ועיצובים ייחודיים בעברית לקוהרנטיות עיצובית מושלמת
 const categoryMetadata: Record<string, { icon: React.ComponentType<any>; colorClass: string; bgClass: string; borderClass: string }> = {
@@ -107,11 +117,23 @@ export default function VendorsList() {
 
   // טעינת רשימת הספקים בטעינת העמוד
   const loadVendors = async () => {
-    if (!isConfigured) return;
-    const list = await fetchVendors();
-    if (list) {
+    let list: Vendor[] = [];
+    if (isConfigured) {
+      const sheetsList = await fetchVendors();
+      if (sheetsList && sheetsList.length > 0) {
+        list = sheetsList;
+      }
+    }
+    
+    if (list.length === 0) {
+      const dbList = await fetchVendorsFirestore('guest-123');
+      if (dbList && dbList.length > 0) {
+        list = dbList;
+      }
+    }
+
+    if (list.length > 0) {
       setVendors(list);
-      // פתיחת כל הקטגוריות כברירת מחדל בעת טעינה מוצלחת ראשונה
       const initialExpanded: Record<string, boolean> = {};
       list.forEach(v => {
         initialExpanded[v.category] = true;
@@ -121,7 +143,36 @@ export default function VendorsList() {
   };
 
   useEffect(() => {
-    loadVendors();
+    let unsubscribe: (() => void) | null = null;
+
+    if (db && isRealConfig) {
+      try {
+        const q = query(collection(db, 'vendors'), where('userId', '==', 'guest-123'));
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const list: Vendor[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push({ vendorId: docSnap.id, ...docSnap.data() } as Vendor);
+          });
+          setVendors(list);
+          const initialExpanded: Record<string, boolean> = {};
+          list.forEach(v => {
+            initialExpanded[v.category] = true;
+          });
+          setExpandedCategories(initialExpanded);
+        }, (err) => {
+          handleFirestoreError(err, OperationType.GET, 'vendors');
+        });
+      } catch (err) {
+        console.error("Firestore snapshot registration failed, using pull-loader:", err);
+        loadVendors();
+      }
+    } else {
+      loadVendors();
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [isConfigured]);
 
   // סינון ספקים לפי שאילתת חיפוש
@@ -198,6 +249,9 @@ export default function VendorsList() {
     setIsModalOpen(true);
   };
 
+  const [vendorToDelete, setVendorToDelete] = useState<string | null>(null);
+  const [vendorNameToDelete, setVendorNameToDelete] = useState<string>('');
+
   // שליחת הטופס לשינוי/הוספת ספק (Upsert)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,24 +281,62 @@ export default function VendorsList() {
       logoUrl: finalLogoUrl
     };
 
-    const result = await saveVendor(itemPayload);
+    let result: Vendor | null = null;
     
-    if (result) {
-      // עדכון ה-state המקומי ללא צורך בריענון דף מלא
-      if (formVendorId) {
-        // עריכה
-        setVendors(prev => prev.map(v => v.vendorId === formVendorId ? result : v));
-        triggerToast('הספק עודכן בהצלחה בגליונות Google Sheets!');
+    // 1. שמירה ב-Firestore
+    if (db && isRealConfig) {
+      try {
+        result = await saveVendorFirestore(itemPayload);
+      } catch (err) {
+        console.error("Firestore save error:", err);
+      }
+    }
+
+    // 2. שמירה ב-Google Sheets אם מוגדר
+    if (isConfigured) {
+      try {
+        const sheetsResult = await saveVendor(itemPayload);
+        if (sheetsResult && !result) {
+          result = sheetsResult;
+        }
+      } catch (err) {
+        console.error("Sheets save error:", err);
+      }
+    }
+
+    // 3. שמירה גיבוי מקומי במידה ושניהם כשלו / לא מוגדרים
+    if (!result) {
+      result = {
+        vendorId: itemPayload.vendorId || Math.random().toString(36).substring(2, 9),
+        category: itemPayload.category,
+        vendorName: itemPayload.vendorName,
+        logoUrl: itemPayload.logoUrl,
+        lastUpdated: new Date().toISOString()
+      };
+      
+      const cached = localStorage.getItem('noa_vendors');
+      let items: Vendor[] = cached ? JSON.parse(cached) : [];
+      const index = items.findIndex(item => item.vendorId === result!.vendorId);
+      if (index >= 0) {
+        items[index] = result;
       } else {
-        // הוספה חדשה
-        setVendors(prev => [result, ...prev]);
-        triggerToast('הספק התווסף בהצלחה למסד הנתונים ברשת!');
-        // ודא שהקטגוריה החדשה פתוחה באקורדיון
+        items.unshift(result);
+      }
+      localStorage.setItem('noa_vendors', JSON.stringify(items));
+    }
+
+    if (result) {
+      if (formVendorId) {
+        setVendors(prev => prev.map(v => v.vendorId === formVendorId ? result! : v));
+        triggerToast('הספק עודכן בהצלחה במערכת!');
+      } else {
+        setVendors(prev => [result!, ...prev]);
+        triggerToast('הספק התווסף בהצלחה למערכת!');
         setExpandedCategories(prev => ({ ...prev, [categoryToSave]: true }));
       }
       setIsModalOpen(false);
     } else {
-      alert('שגיאה בשמירת הספק, ודא תדר חשמל והגדרות Google Apps Script תקינות.');
+      alert('שגיאה בשמירת הספק, אנא נסה שוב.');
     }
     setIsFormSubmitting(false);
   };
@@ -252,12 +344,31 @@ export default function VendorsList() {
   // מחיקת ספק מהרשימה
   const handleDeleteVendor = async (id: string) => {
     setIsDeletingId(id);
-    const success = await deleteVendor(id);
-    if (success) {
+    let success = false;
+    
+    if (db && isRealConfig) {
+      try {
+        await deleteVendorFirestore('guest-123', id);
+        success = true;
+      } catch (err) {
+        console.error("Firestore delete error:", err);
+      }
+    }
+
+    if (isConfigured) {
+      try {
+        const sheetsSuccess = await deleteVendor(id);
+        success = success || sheetsSuccess;
+      } catch (err) {
+        console.error("Sheets delete error:", err);
+      }
+    }
+
+    if (success || (!isRealConfig && !isConfigured)) {
       setVendors(prev => prev.filter(v => v.vendorId !== id));
-      triggerToast('הספק נמחק לצמיתות מגיליון ה-Spreadsheet!');
+      triggerToast('הספק נמחק בהצלחה מסנכרון המערכת!');
     } else {
-      alert('מחיקת הספק נכשלה, נסה שוב מאוחר יותר.');
+      alert('מחיקת הספק נכשלה.');
     }
     setIsDeletingId(null);
   };
@@ -295,69 +406,57 @@ export default function VendorsList() {
           </h2>
         </div>
         
-        {isConfigured && (
-          <button
-            type="button"
-            onClick={handleOpenAddModal}
-            className="primary-btn py-2 px-3.5 text-xs text-white rounded-xl shadow-lg shadow-emerald-500/10 flex items-center gap-1 font-bold cursor-pointer transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4 text-white" />
-            הוסף ספק
-          </button>
+        <button
+          type="button"
+          onClick={handleOpenAddModal}
+          className="primary-btn py-2 px-3.5 text-xs text-white rounded-xl shadow-lg shadow-emerald-500/10 flex items-center gap-1 font-bold cursor-pointer transition-all active:scale-95"
+        >
+          <Plus className="w-4 h-4 text-white" />
+          הוסף ספק
+        </button>
+      </div>
+
+      {/* Database Integration Status Indicators */}
+      <div className="flex gap-2.5 flex-wrap items-center bg-slate-50 border border-slate-150 p-3 rounded-2xl text-[10px] font-bold text-slate-500 select-none">
+        <span className="text-slate-400">מנוע סנכרון:</span>
+        <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full font-sans">
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+          שלב Firestore פעיל
+        </span>
+        {isConfigured ? (
+          <span className="inline-flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-700 px-2 py-0.5 rounded-full font-sans">
+            <span className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse"></span>
+            סנכרון Google Sheets מחובר
+          </span>
+         ) : (
+          <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-sans">
+            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full"></span>
+            Google Sheets במצב לא מחובר
+          </span>
         )}
       </div>
 
-      {/* יולידיציית הגדרות לאתר - תצוגת השגיאה אם חסר URL של של Google Sheets */}
-      {!isConfigured ? (
-        <div className="bg-amber-50/70 border border-amber-200 p-6 rounded-3xl flex flex-col items-center text-center space-y-4">
-          <div className="p-3 bg-amber-500/10 text-amber-600 rounded-2xl">
-            <Settings className="w-8 h-8 animate-spin" />
-          </div>
-          <div>
-            <h4 className="text-sm font-extrabold text-amber-900">חיבור זיכרון Google Sheets אינו מוגדר</h4>
-            <p className="text-xs text-amber-700 leading-relaxed mt-2 max-w-sm">
-              דף ניהול הספקים מחייב קישור פעיל לגיליונות Google Sheets על מנת לקרוא ולכתוב מידע בזמן אמת.
-            </p>
-          </div>
-          <div className="p-3 bg-white border border-amber-100 rounded-xl space-y-2 text-right text-xs text-slate-600 w-full max-w-xs shadow-sm">
-            <div className="font-bold text-slate-800 border-b border-slate-100 pb-1">3 שלבים פשוטים לחיבור:</div>
-            <div className="flex gap-2">
-              <span className="w-4 h-4 bg-emerald-100 text-emerald-800 font-bold rounded-full flex items-center justify-center text-[10px] shrink-0 font-mono mt-0.5">1</span>
-              <span>פתחו את ה<b>הגדרות</b> (לחיצה על גלגל השיניים בראש העמוד).</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="w-4 h-4 bg-emerald-100 text-emerald-800 font-bold rounded-full flex items-center justify-center text-[10px] shrink-0 font-mono mt-0.5">2</span>
-              <span>הזינו את הכתובת (Web App URL) מהפריסה של Google Apps Script.</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="w-4 h-4 bg-emerald-100 text-emerald-800 font-bold rounded-full flex items-center justify-center text-[10px] shrink-0 font-mono mt-0.5">3</span>
-              <span>לחצו על <b>שמירת שינויים</b> ודף זה יתעדכן ויפתח לסנכרון מיידי!</span>
-            </div>
-          </div>
+      {/* סרגל חיפוש ועדכון */}
+      <div className="flex gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+        <div className="relative flex-1">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="חיפוש ספק, מפתח או קטגוריה..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full text-xs font-semibold p-2.5 pr-9 rounded-xl border border-slate-200 focus:outline-emerald-500 bg-slate-50/50"
+          />
         </div>
-      ) : (
-        <>
-          {/* סרגל חיפוש ועדכון */}
-          <div className="flex gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-            <div className="relative flex-1">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="חיפוש ספק, מפתח או קטגוריה..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs font-semibold p-2.5 pr-9 rounded-xl border border-slate-200 focus:outline-emerald-500 bg-slate-50/50"
-              />
-            </div>
-            <button
-              onClick={loadVendors}
-              disabled={loading}
-              className="p-2.5 text-slate-500 border border-slate-200 hover:text-emerald-500 hover:bg-emerald-50/50 rounded-xl transition-all font-bold flex items-center justify-center"
-              title="רענן רשימה"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
-            </button>
-          </div>
+        <button
+          onClick={loadVendors}
+          disabled={loading}
+          className="p-2.5 text-slate-500 border border-slate-200 hover:text-emerald-500 hover:bg-emerald-50/50 rounded-xl transition-all font-bold flex items-center justify-center"
+          title="רענן רשימה"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
+        </button>
+      </div>
 
           {/* הודעת הצלחה צפה */}
           <AnimatePresence>
@@ -533,9 +632,8 @@ export default function VendorsList() {
                                   type="button"
                                   disabled={isDeletingId === vendor.vendorId}
                                   onClick={() => {
-                                    if(confirm(`האם אתה בטוח שברצונך למחוק את הספק "${vendor.vendorName}"?`)) {
-                                      handleDeleteVendor(vendor.vendorId);
-                                    }
+                                    setVendorToDelete(vendor.vendorId);
+                                    setVendorNameToDelete(vendor.vendorName);
                                   }}
                                   className="p-1 px-2 text-slate-400 border border-slate-200 rounded-lg hover:border-red-300 hover:text-red-600 hover:bg-red-50/50 transition-colors flex items-center justify-center cursor-pointer disabled:opacity-40"
                                   title="מחק ספק"
@@ -557,8 +655,6 @@ export default function VendorsList() {
               );
             })}
           </div>
-        </>
-      )}
 
       {/* מודל להוספה או עריכה של ספק */}
       <AnimatePresence>
@@ -709,6 +805,55 @@ export default function VendorsList() {
               vendor={selectedSecureVendor} 
               onClose={() => setSelectedSecureVendor(null)} 
             />
+          )}
+        </AnimatePresence>
+
+        {/* MODAL: Delete Vendor Confirmation Modal */}
+        <AnimatePresence>
+          {vendorToDelete && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl border border-slate-100 text-right"
+                dir="rtl"
+              >
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-sm font-extrabold text-slate-900 font-sans">אישור מחיקת ספק</h3>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                    האם אתה בטוח שברצונך למחוק לצמיתות את הספק <strong className="text-red-650">"{vendorNameToDelete}"</strong>? פעולה זו תסיר אותו מיידית ובצורה מוחלטת מהרשומות.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVendorToDelete(null);
+                      setVendorNameToDelete('');
+                    }}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    בטל מחיקה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteVendor(vendorToDelete);
+                      setVendorToDelete(null);
+                      setVendorNameToDelete('');
+                    }}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    כן, מחק ספק
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
       

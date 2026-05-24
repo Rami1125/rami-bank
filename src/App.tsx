@@ -56,8 +56,6 @@ export default function App() {
 
   // Settings update fields
   const [newStartingBalance, setNewStartingBalance] = useState('');
-  const [newDisplayName, setNewDisplayName] = useState('');
-  const [gasUrl, setGasUrl] = useState(localStorage.getItem('NOA_GAS_URL') || '');
   const [gasToken, setGasToken] = useState(localStorage.getItem('NOA_GAS_TOKEN') || 'NOA_SECURE_VAULT_TOKEN_2026');
 
   // Setup initial content sync inside simple useEffect on layout mount
@@ -75,10 +73,6 @@ export default function App() {
           const configRes = await fetch('/api/config');
           if (configRes.ok) {
             const configData = await configRes.json();
-            if (configData.gasUrl) {
-              setGasUrl(configData.gasUrl);
-              localStorage.setItem('NOA_GAS_URL', configData.gasUrl);
-            }
             if (configData.gasToken) {
               setGasToken(configData.gasToken);
               localStorage.setItem('NOA_GAS_TOKEN', configData.gasToken);
@@ -88,6 +82,10 @@ export default function App() {
           console.error("Failed to load backend config:", configErr);
         }
 
+        // Force identity hardcode
+        profile.displayName = 'ראמי מסארוה';
+        profile.email = 'rami.msarwa1@gmail.com';
+
         setUser(profile);
         setTransactions(txList);
         setBudgets(budgetList);
@@ -95,7 +93,6 @@ export default function App() {
 
         // Prepopulate editing form
         setNewStartingBalance(profile.startingBalance.toString());
-        setNewDisplayName(profile.displayName);
       } catch (err) {
         console.error("Critical error building initial data streams:", err);
       } finally {
@@ -146,11 +143,10 @@ export default function App() {
 
     const updatedProfile: UserProfile = {
       ...user,
-      displayName: newDisplayName.trim() || user.displayName,
+      displayName: 'ראמי מסארוה',
       startingBalance: isNaN(parseFloat(newStartingBalance)) ? user.startingBalance : parseFloat(newStartingBalance)
     };
 
-    localStorage.setItem('NOA_GAS_URL', gasUrl.trim());
     localStorage.setItem('NOA_GAS_TOKEN', gasToken.trim());
 
     // סנכרון קבוע ושלם מול השרת
@@ -161,7 +157,7 @@ export default function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          gasUrl: gasUrl.trim(),
+          gasUrl: (import.meta as any).env.VITE_API_URL || '',
           gasToken: gasToken.trim()
         })
       });
@@ -279,23 +275,25 @@ export default function App() {
               </div>
 
               <form onSubmit={handleSaveSettings} className="space-y-4 font-sans text-xs font-semibold text-gray-700">
-                <div>
-                  <label className="block mb-1 text-gray-600">שם תצוגה עברי</label>
-                  <input 
-                    type="text" 
-                    value={newDisplayName}
-                    onChange={(e) => setNewDisplayName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-sm"
-                  />
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex justify-between items-center">
+                  <div>
+                    <span className="block text-[10px] text-gray-500 font-medium">זהות קבועה במערכת</span>
+                    <span className="text-sm font-bold text-gray-900">ראמי מסארוה</span>
+                  </div>
+                  <div className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold">
+                    מנהל מערכת
+                  </div>
                 </div>
+
                 <div>
-                  <label className="block mb-1 text-gray-600">יתרת פתיחה בעו"ש (שקל)</label>
+                  <label className="block mb-1 text-gray-600">יתרת פתיחה בעו"ש / תקציב פעיל (שקל)</label>
                   <input 
                     type="number" 
                     value={newStartingBalance}
                     onChange={(e) => setNewStartingBalance(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-sm font-mono"
+                    className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-sm font-mono focus:ring-2 focus:ring-slate-400 outline-none transition-all"
                   />
+                  <p className="text-[10px] text-gray-400 font-normal mt-1">שדה זה נשאר דינמי וניתן לעדכון בכל עת לניהול תזרים המזומנים השוטף.</p>
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">
@@ -303,36 +301,35 @@ export default function App() {
                     <span>חיבור זיכרון וכספת (Google Sheets API)</span>
                   </h4>
                   <div className="space-y-2.5">
-                    <div>
-                      <label className="block mb-1 text-slate-500 font-medium">כתובת ה-Web App של Google Apps Script</label>
-                      <input 
-                        type="url" 
-                        placeholder="https://script.google.com/macros/s/.../exec"
-                        value={gasUrl}
-                        onChange={(e) => setGasUrl(e.target.value)}
-                        className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white font-mono text-xs text-left"
-                        dir="ltr"
-                      />
+                    <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100/50">
+                      <span className="block text-[10px] text-emerald-800 font-bold">חיבור מובנה ומוגדר מראש</span>
+                      <span className="text-[10px] text-emerald-700 font-normal block mt-1 leading-relaxed">
+                        כתובת ה-Web App של Google Apps Script נשאבת באופן אוטומטי ומאובטח ממשתנה המערכת: 
+                        <code className="bg-emerald-100 px-1 py-0.5 rounded ml-1 font-mono text-[9px] block mt-1 break-all select-all">
+                          {(import.meta as any).env.VITE_API_URL || "קובע מראש בהגדרות הסביבה"}
+                        </code>
+                      </span>
                     </div>
+
                     <div>
-                      <label className="block mb-1 text-slate-500 font-medium">אסימון אבטחה (Secure Token)</label>
+                      <label className="block mb-1 text-slate-500 font-medium font-sans">אסימון אבטחה (Secure Token)</label>
                       <input 
                         type="text" 
                         value={gasToken}
                         onChange={(e) => setGasToken(e.target.value)}
-                        className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white font-mono text-xs text-left"
+                        className="w-full p-2.5 rounded-xl border border-gray-200 bg-slate-50/50 focus:bg-white font-mono text-xs text-left"
                         dir="ltr"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex gap-3 text-emerald-900">
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100/30 flex gap-3 text-emerald-900">
                   <Database className="w-5 h-5 text-emerald-600 shrink-0" />
                   <div>
-                    <h5 className="font-bold text-xs">מצב מסד נתונים פסיבי</h5>
+                    <h5 className="font-bold text-xs">סנכרון ענן היברידי</h5>
                     <p className="text-[10px] text-emerald-850 leading-relaxed mt-1">
-                      האפליקציה פועלת במצב היברידי מאובטח. כל השינויים נשמרים בדפדפן באופן מיידי. ניתן לסנכרן עם Firebase החיצוני על ידי הוספת מפתח תקני ל-firebase-applet-config.json.
+                      השינויים נשמרים בדפדפן ובכספת Google Sheets המוגדרת מראש במשתני הסביבה בסנכרון מלא ובזמן אמת של המידע הפיננסי.
                     </p>
                   </div>
                 </div>

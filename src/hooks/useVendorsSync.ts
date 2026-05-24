@@ -17,9 +17,9 @@ export function useVendorsSync() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // שליפת הגדרות מה-localStorage
+  // שליפת הגדרות קישור ה-GAS מתוך משתנה הסביבה או ה-localStorage כגיבוי
   const getGasConfig = useCallback(() => {
-    const url = localStorage.getItem('NOA_GAS_URL');
+    const url = (import.meta as any).env.VITE_API_URL || localStorage.getItem('NOA_GAS_URL') || '';
     const token = localStorage.getItem('NOA_GAS_TOKEN') || 'NOA_SECURE_VAULT_TOKEN_2026';
     return { url, token };
   }, []);

@@ -24,17 +24,24 @@ import {
   ChevronRight,
   Sparkles,
   Calculator,
-  TrendingDown
+  TrendingDown,
+  Edit2
 } from 'lucide-react';
-import { StandingOrder, Loan, UserProfile } from '../types';
+import { StandingOrder, Loan, UserProfile, Vendor } from '../types';
 import { 
   fetchStandingOrders, 
   saveStandingOrder, 
   deleteStandingOrder,
   fetchLoans, 
   saveLoan, 
-  deleteLoan 
+  deleteLoan,
+  db,
+  isRealConfig,
+  handleFirestoreError,
+  OperationType
 } from '../firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { useVendorsSync, Vendor as SheetsVendor } from '../hooks/useVendorsSync';
 import { motion, AnimatePresence } from 'motion/react';
 
 // For DialogTitle & DialogDescription local validation compatibility
@@ -94,8 +101,96 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
   const [calendarCategoryFilter, setCalendarCategoryFilter] = useState<string>('all');
   const [calendarSearchQuery, setCalendarSearchQuery] = useState<string>('');
 
+  // Editing standing order states
+  const [editingSo, setEditingSo] = useState<StandingOrder | null>(null);
+  const [isEditSoModalOpen, setIsEditSoModalOpen] = useState(false);
+  const [editSoVendorName, setEditSoVendorName] = useState('');
+  const [editSoCategory, setEditSoCategory] = useState('דיור וחשבונות');
+  const [editSoAmount, setEditSoAmount] = useState('');
+  const [editSoFrequency, setEditSoFrequency] = useState<'weekly' | 'bimonthly' | 'monthly' | 'yearly'>('monthly');
+  const [editSoNextPaymentDate, setEditSoNextPaymentDate] = useState('');
+
+  // Custom Confirmation Dialog structures
+  const [soToDelete, setSoToDelete] = useState<string | null>(null);
+
+  // Load vendors list for dynamic logo join matching
+  const { fetchVendors } = useVendorsSync();
+  const [vendors, setVendors] = useState<SheetsVendor[]>([]);
+
+  // Lookup function to marry standing order vendorNames to logos
+  const getVendorLogoUrl = (name: string, vendorsList: SheetsVendor[]) => {
+    const match = vendorsList.find(v => v.vendorName.trim().toLowerCase() === name.trim().toLowerCase());
+    if (match && match.logoUrl) return match.logoUrl;
+    
+    // Fallback predefined patterns for popular Hebrew vendors
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('שופרסל')) return 'https://logo.clearbit.com/shufersal.co.il';
+    if (lowerName.includes('סלקום')) return 'https://logo.clearbit.com/cellcom.co.il';
+    if (lowerName.includes('בזק')) return 'https://logo.clearbit.com/bezeq.co.il';
+    if (lowerName.includes('פרטנר')) return 'https://logo.clearbit.com/partner.co.il';
+    if (lowerName.includes('הוט')) return 'https://logo.clearbit.com/hot.net.il';
+    if (lowerName.includes('פז')) return 'https://logo.clearbit.com/paz.co.il';
+    if (lowerName.includes('מקס') || lowerName.includes('max')) return 'https://logo.clearbit.com/max.co.il';
+    if (lowerName.includes('ישראכרט')) return 'https://logo.clearbit.com/isracard.co.il';
+    if (lowerName.includes('כאל')) return 'https://logo.clearbit.com/cal-online.co.il';
+    if (lowerName.includes('ביטוח')) return 'https://logo.clearbit.com/harel-group.co.il';
+    
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=f1f5f9&color=475569&bold=true&font-size=0.45&length=2`;
+  };
+
   useEffect(() => {
-    async function loadData() {
+    async function loadVendorsList() {
+      try {
+        const list = await fetchVendors();
+        if (list) {
+          setVendors(list);
+        }
+      } catch (err) {
+        console.warn("Could not fetch vendors list:", err);
+      }
+    }
+    loadVendorsList();
+  }, [fetchVendors]);
+
+  // Real-time synchronization
+  useEffect(() => {
+    let unsubscribeSO: (() => void) | null = null;
+    let unsubscribeLoans: (() => void) | null = null;
+
+    if (db && isRealConfig) {
+      setLoading(true);
+      try {
+        const qSO = query(collection(db, 'standing_orders'), where('userId', '==', user.uid));
+        unsubscribeSO = onSnapshot(qSO, (snapshot) => {
+          const items: StandingOrder[] = [];
+          snapshot.forEach((docSnap) => {
+            items.push({ id: docSnap.id, ...docSnap.data() } as StandingOrder);
+          });
+          setStandingOrders(items);
+          setLoading(false);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, 'standing_orders');
+        });
+
+        const qLoans = query(collection(db, 'loans'), where('userId', '==', user.uid));
+        unsubscribeLoans = onSnapshot(qLoans, (snapshot) => {
+          const items: Loan[] = [];
+          snapshot.forEach((docSnap) => {
+            items.push({ id: docSnap.id, ...docSnap.data() } as Loan);
+          });
+          setLoans(items);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, 'loans');
+        });
+      } catch (err) {
+        console.error("Firestore live subscription setup failed, using offline mode:", err);
+        loadManual();
+      }
+    } else {
+      loadManual();
+    }
+
+    async function loadManual() {
       try {
         setLoading(true);
         const soData = await fetchStandingOrders(user.uid);
@@ -109,7 +204,11 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
         setLoading(false);
       }
     }
-    loadData();
+
+    return () => {
+      if (unsubscribeSO) unsubscribeSO();
+      if (unsubscribeLoans) unsubscribeLoans();
+    };
   }, [user.uid]);
 
   // Triggering success message flash helper
@@ -182,13 +281,56 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
     }
   };
 
-  // Standing Order: Delete
-  const handleDeleteStandingOrder = async (soId: string) => {
+  // Standing Order: Open Edit Modal
+  const handleOpenEditSoModal = (so: StandingOrder) => {
+    setEditingSo(so);
+    setEditSoVendorName(so.vendorName);
+    setEditSoCategory(so.category);
+    setEditSoAmount(so.amount.toString());
+    setEditSoFrequency(so.frequency);
+    setEditSoNextPaymentDate(so.nextPaymentDate || so.startDate);
+    setIsEditSoModalOpen(true);
+  };
+
+  // Standing Order: Save Edit
+  const handleSaveEditStandingOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSo || !editSoVendorName.trim() || !editSoAmount || isNaN(parseFloat(editSoAmount))) return;
+
     try {
-      const target = standingOrders.find(item => item.id === soId);
-      await deleteStandingOrder(user.uid, soId);
-      setStandingOrders(prev => prev.filter(item => item.id !== soId));
-      if (selectedOrderHistory?.id === soId) {
+      const updated: StandingOrder = {
+        ...editingSo,
+        vendorName: editSoVendorName.trim(),
+        category: editSoCategory,
+        amount: parseFloat(editSoAmount),
+        frequency: editSoFrequency,
+        nextPaymentDate: editSoNextPaymentDate
+      };
+
+      await saveStandingOrder(updated);
+      setStandingOrders(prev => prev.map(item => item.id === editingSo.id ? updated : item));
+      setIsEditSoModalOpen(false);
+      setEditingSo(null);
+      triggerSuccessAlert(`הוראת קבע של ${updated.vendorName} עודכנה בהצלחה!`);
+    } catch (err) {
+      console.error("Failed to update standing order:", err);
+      setError("שגיאה בעדכון הוראת קבע");
+    }
+  };
+
+  // Standing Order: Delete Trigger
+  const handleDeleteStandingOrderClick = (soId: string) => {
+    setSoToDelete(soId);
+  };
+
+  // Standing Order: Delete Confirm Action
+  const handleConfirmDeleteSO = async () => {
+    if (!soToDelete) return;
+    try {
+      const target = standingOrders.find(item => item.id === soToDelete);
+      await deleteStandingOrder(user.uid, soToDelete);
+      setStandingOrders(prev => prev.filter(item => item.id !== soToDelete));
+      if (selectedOrderHistory?.id === soToDelete) {
         setSelectedOrderHistory(null);
       }
       if (target) {
@@ -196,6 +338,8 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setSoToDelete(null);
     }
   };
 
@@ -643,16 +787,19 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex gap-3">
-                              <div className={`relative p-2.5 rounded-xl shrink-0 flex items-center justify-center ${
-                                so.status === 'paused' 
-                                  ? 'bg-slate-100 text-slate-500' 
-                                  : isUpcomingSoon
-                                    ? 'bg-rose-55 text-rose-600 border border-rose-100'
-                                    : 'bg-emerald-50 text-emerald-600'
-                              }`}>
-                                <CreditCard className="w-5 h-5" />
+                              {/* Dynamic Logo avatar with placeholder */}
+                              <div className="w-10 h-10 rounded-full border border-slate-100 overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center relative shadow-sm">
+                                <img 
+                                  src={getVendorLogoUrl(so.vendorName, vendors)} 
+                                  alt={so.vendorName} 
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(so.vendorName)}&background=f1f5f9&color=475569&bold=true&font-size=0.45&length=2`;
+                                  }}
+                                  className="w-10 h-10 rounded-full object-contain"
+                                />
                                 {isUpcomingSoon && (
-                                  <span className="absolute -top-1 -left-1 flex h-2.5 w-2.5">
+                                  <span className="absolute -top-0.5 -left-0.5 flex h-2.5 w-2.5">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600"></span>
                                   </span>
@@ -733,17 +880,29 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
                               <button
                                 type="button"
                                 onClick={() => handleSimulateStandingOrderPayment(so)}
-                                className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors"
+                                className="text-[10px] font-bold text-emerald-750 hover:text-emerald-850 transition-colors"
                                 title="סמלץ ביצוע תשלום נוסף בהיסטוריה"
                               >
                                 סמלץ תשלום
                               </button>
                             )}
-                            
+
+                            {/* Edit Action Button */}
                             <button
                               type="button"
-                              onClick={() => handleDeleteStandingOrder(so.id)}
-                              className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-colors"
+                              onClick={() => handleOpenEditSoModal(so)}
+                              className="p-1.5 px-2 border border-slate-200 rounded-lg text-slate-500 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                              title="ערוך הוראת קבע"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>ערוך</span>
+                            </button>
+                            
+                            {/* Delete Trigger Button (Requires confirmation modal) */}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStandingOrderClick(so.id)}
+                              className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors flex items-center cursor-pointer"
                               title="מחיקת הוראת קבע"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1570,6 +1729,148 @@ export default function FinancialModule({ user, currentBalance = 0 }: FinancialM
                 </button>
               </form>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 3: Edit Standing Order Form */}
+      <AnimatePresence>
+        {isEditSoModalOpen && editingSo && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 border border-slate-200 shadow-xl"
+            >
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <DialogTitle className="text-base font-extrabold text-slate-950">עריכת הוראת קבע</DialogTitle>
+                <button
+                  onClick={() => setIsEditSoModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <DialogDescription className="sr-only">ערוך מאפייני הוראת קבע קיימת, סכום, תדר ופרטים.</DialogDescription>
+
+              <form onSubmit={handleSaveEditStandingOrder} className="space-y-4 font-sans text-xs font-semibold text-slate-700">
+                <div>
+                  <label className="block mb-1 text-slate-600 font-medium">שם מוטב / ספק</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="לדוג׳: חברת החשמל, סלקום, נטפליקס"
+                    value={editSoVendorName}
+                    onChange={(e) => setEditSoVendorName(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-slate-600 font-medium">סכום חיוב (₪)</label>
+                    <input
+                      type="number"
+                      required
+                      step="0.01"
+                      placeholder="₪ סכום מדויק או ממוצע"
+                      value={editSoAmount}
+                      onChange={(e) => setEditSoAmount(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-600 font-medium font-sans">קטגוריה קבועה</label>
+                    <select
+                      value={editSoCategory}
+                      onChange={(e) => setEditSoCategory(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-sm"
+                    >
+                      <option value="דיור וחשבונות">דיור וחשבונות</option>
+                      <option value="מזון וסופרמרקט">מזון וסופרמרקט</option>
+                      <option value="תחבורה ודלק">תחבורה ודלק</option>
+                      <option value="פנאי ובידור">פנאי ובידור</option>
+                      <option value="קניות וביגוד">קניות וביגוד</option>
+                      <option value="אחר">אחר</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-slate-600 font-medium">תדירות גבייה</label>
+                    <select
+                      value={editSoFrequency}
+                      onChange={(e) => setEditSoFrequency(e.target.value as any)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs"
+                    >
+                      <option value="weekly">כל שבוע</option>
+                      <option value="bimonthly">דו-חודשי</option>
+                      <option value="monthly">חודשי</option>
+                      <option value="yearly">שנתי</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-slate-600 font-medium font-sans">תאריך חיוב קרוב</label>
+                    <input
+                      type="date"
+                      required
+                      value={editSoNextPaymentDate}
+                      onChange={(e) => setEditSoNextPaymentDate(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-center font-mono"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full text-white bg-emerald-600 hover:bg-emerald-700 py-3 rounded-xl text-sm font-bold shadow-md shadow-emerald-600/10 transition-colors cursor-pointer"
+                >
+                  שמור שינויים בהוראת קבע
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 4: Delete Standing Order Confirmation Dialog */}
+      <AnimatePresence>
+        {soToDelete && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl border border-slate-100"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-extrabold text-slate-950 font-sans">אישור מחיקת הוראת קבע</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  האם אתה בטוח שברצונך למחוק לצמיתות את הוראת קבע זו? פעולה זו היא בלתי הפיכה ותמחק את כל היסטוריית התשלומים המסומלצת.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => setSoToDelete(null)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  בטל מחיקה
+                </button>
+                <button
+                  onClick={handleConfirmDeleteSO}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  כן, מחק לצמיתות
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

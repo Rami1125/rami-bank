@@ -17,17 +17,19 @@ import {
   collection, 
   query, 
   where,
-  getDocFromServer
+  getDocFromServer,
+  onSnapshot
 } from 'firebase/firestore';
 import { UserProfile, Transaction, Budget, Vendor, RecoveryPlan, StandingOrder, Loan } from './types';
+import { Vendor as SheetsVendor } from './hooks/useVendorsSync';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Detect if we have real configured keys vs placeholder values
-const isRealConfig = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'dummy-api-key' && firebaseConfig.projectId !== 'dummy-project';
+export const isRealConfig = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'dummy-api-key' && firebaseConfig.projectId !== 'dummy-project';
 
 let app;
-let db: any = null;
-let auth: any = null;
+export let db: any = null;
+export let auth: any = null;
 let isFirebaseConnected = false;
 
 if (isRealConfig) {
@@ -64,8 +66,8 @@ testConnection();
 // Initialize initial local storage data if empty, so the app is instantly rich with data
 const DEFAULT_USER: UserProfile = {
   uid: 'guest-123',
-  displayName: 'רוי פרידמן',
-  email: 'roy.fridman@gmail.com',
+  displayName: 'ראמי מסארוה',
+  email: 'rami.msarwa1@gmail.com',
   startingBalance: 12500,
   currency: '₪'
 };
@@ -207,19 +209,26 @@ if (typeof window !== 'undefined') {
 
 // 1. User Profile Management
 export async function fetchUserProfile(userId: string): Promise<UserProfile> {
+  let profile: UserProfile;
   if (db && isRealConfig) {
     try {
       const docRef = doc(db, 'users', userId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
+        profile = docSnap.data() as UserProfile;
+        profile.displayName = 'ראמי מסארוה';
+        profile.email = 'rami.msarwa1@gmail.com';
+        return profile;
       }
     } catch (e) {
       console.warn("Firestore error reading user, using fallback", e);
     }
   }
   const cached = localStorage.getItem('noa_user');
-  return cached ? JSON.parse(cached) : DEFAULT_USER;
+  profile = cached ? JSON.parse(cached) : { ...DEFAULT_USER };
+  profile.displayName = 'ראמי מסארוה';
+  profile.email = 'rami.msarwa1@gmail.com';
+  return profile;
 }
 
 export async function updateUserProfile(profile: UserProfile): Promise<void> {
@@ -509,6 +518,105 @@ export async function deleteLoan(userId: string, loanId: string): Promise<void> 
     items = items.filter(item => item.id !== loanId);
     localStorage.setItem('noa_loans', JSON.stringify(items));
   }
+}
+
+// 7. Vendors Management (Firestore)
+export async function fetchVendorsFirestore(userId: string): Promise<SheetsVendor[]> {
+  if (db && isRealConfig) {
+    try {
+      const q = query(collection(db, 'vendors'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      const items: SheetsVendor[] = [];
+      querySnapshot.forEach((docSnap) => {
+        items.push({ vendorId: docSnap.id, ...docSnap.data() } as SheetsVendor);
+      });
+      if (items.length > 0) return items;
+    } catch (e) {
+      console.warn("Firestore vendors lookup failure, using local cache", e);
+    }
+  }
+  const cached = localStorage.getItem('noa_vendors');
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function saveVendorFirestore(vendor: { vendorId?: string; category: string; vendorName: string; logoUrl: string; userId?: string }): Promise<SheetsVendor> {
+  const userId = vendor.userId || 'guest-123';
+  const newVendor = { ...vendor, userId, vendorId: vendor.vendorId || Math.random().toString(36).substring(2, 9) } as SheetsVendor & { userId: string };
+  
+  if (db && isRealConfig) {
+    try {
+      const { vendorId, ...data } = newVendor;
+      await setDoc(doc(db, 'vendors', newVendor.vendorId), data);
+    } catch (e) {
+      console.warn("Firestore error writing vendor, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_vendors');
+  let items: SheetsVendor[] = cached ? JSON.parse(cached) : [];
+  const index = items.findIndex(item => item.vendorId === newVendor.vendorId);
+  if (index >= 0) {
+    items[index] = newVendor;
+  } else {
+    items.unshift(newVendor);
+  }
+  localStorage.setItem('noa_vendors', JSON.stringify(items));
+  return newVendor;
+}
+
+export async function deleteVendorFirestore(userId: string, vendorId: string): Promise<void> {
+  if (db && isRealConfig) {
+    try {
+      await deleteDoc(doc(db, 'vendors', vendorId));
+    } catch (e) {
+      console.warn("Firestore error deleting vendor, using local storage", e);
+    }
+  }
+
+  const cached = localStorage.getItem('noa_vendors');
+  if (cached) {
+    let items: SheetsVendor[] = JSON.parse(cached);
+    items = items.filter(item => item.vendorId !== vendorId);
+    localStorage.setItem('noa_vendors', JSON.stringify(items));
+  }
+}
+
+// 8. Custom Firestore Error Handlers
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid || 'guest-123',
+      email: auth?.currentUser?.email || 'rami.msarwa1@gmail.com',
+      emailVerified: auth?.currentUser?.emailVerified || true,
+      isAnonymous: auth?.currentUser?.isAnonymous || false,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
 // Export Auth wrappers to protect screens UI
