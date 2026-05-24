@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -32,6 +32,7 @@ import {
 import { Transaction, Budget, UserProfile } from '../types';
 import CategoryIcon from './CategoryIcon';
 import { motion, AnimatePresence } from 'motion/react';
+import { useVendorsSync, Vendor as SheetsVendor } from '../hooks/useVendorsSync';
 
 interface DashboardProps {
   user: UserProfile;
@@ -60,6 +61,46 @@ export default function Dashboard({
   const [vendorName, setVendorName] = useState('');
   const [freeText, setFreeText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load vendors list for dynamic logo join matching
+  const { fetchVendors } = useVendorsSync();
+  const [vendors, setVendors] = useState<SheetsVendor[]>([]);
+
+  // Lookup function to marry transaction vendorNames to logos
+  const getVendorLogoUrl = (name: string, vendorsList: SheetsVendor[]) => {
+    if (!name) return '';
+    const match = vendorsList.find(v => v.vendorName.trim().toLowerCase() === name.trim().toLowerCase());
+    if (match && match.logoUrl) return match.logoUrl;
+    
+    // Fallback predefined patterns for popular Hebrew vendors
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('שופרסל')) return 'https://logo.clearbit.com/shufersal.co.il';
+    if (lowerName.includes('רמי לוי')) return 'https://logo.clearbit.com/ramileyvy.co.il';
+    if (lowerName.includes('חברת החשמל') || lowerName.includes('חשמל')) return 'https://logo.clearbit.com/iec.co.il';
+    if (lowerName.includes('סלקום')) return 'https://logo.clearbit.com/cellcom.co.il';
+    if (lowerName.includes('פרטנר')) return 'https://logo.clearbit.com/partner.co.il';
+    if (lowerName.includes('פז')) return 'https://logo.clearbit.com/paz.co.il';
+    if (lowerName.includes('נטפליקס') || lowerName.includes('netflix')) return 'https://logo.clearbit.com/netflix.com';
+    if (lowerName.includes('ספוטיפיי') || lowerName.includes('spotify')) return 'https://logo.clearbit.com/spotify.com';
+    if (lowerName.includes('גוגל') || lowerName.includes('google')) return 'https://logo.clearbit.com/google.com';
+    if (lowerName.includes('אפל') || lowerName.includes('apple')) return 'https://logo.clearbit.com/apple.com';
+    
+    return '';
+  };
+
+  useEffect(() => {
+    async function loadVendorsList() {
+      try {
+        const list = await fetchVendors();
+        if (list) {
+          setVendors(list);
+        }
+      } catch (err) {
+        console.warn("Could not fetch vendors list for Dashboard:", err);
+      }
+    }
+    loadVendorsList();
+  }, [fetchVendors]);
 
   // Edit Transaction modal states
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -680,7 +721,18 @@ export default function Dashboard({
             transactions.slice(0, 10).map((tx) => (
               <div key={tx.id} className="p-3.5 flex justify-between items-center group hover:bg-gray-50 transition-colors">
                 <div className="flex gap-3.5 items-center">
-                  <CategoryIcon category={tx.category} type={tx.type} />
+                  {/* Dynamic Logo avatar with placeholder */}
+                  <div className="w-10 h-10 rounded-full border border-slate-100 overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center relative shadow-sm">
+                    <img 
+                      src={getVendorLogoUrl(tx.vendorName, vendors) || `https://ui-avatars.com/api/?name=${encodeURIComponent(tx.vendorName)}&background=f1f5f9&color=475569&bold=true&font-size=0.45&length=2`} 
+                      alt={tx.vendorName} 
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tx.vendorName)}&background=f1f5f9&color=475569&bold=true&font-size=0.45&length=2`;
+                      }}
+                      className="w-10 h-10 rounded-full object-contain"
+                    />
+                  </div>
                   <div>
                     <h5 className="text-sm font-bold text-gray-800">{tx.vendorName}</h5>
                     <span className="text-[11px] text-gray-400 block">{tx.category} • {tx.date}</span>
@@ -721,12 +773,13 @@ export default function Dashboard({
       {/* MODAL 1: Edit Transaction Form */}
       <AnimatePresence>
         {editingTransaction && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 pointer-events-auto" dir="rtl" onClick={() => setEditingTransaction(null)}>
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 border border-slate-200 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 border border-slate-200 shadow-xl pointer-events-auto relative z-[10000]"
             >
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <h3 className="text-base font-extrabold text-slate-950">עריכת פרטי עסקה</h3>
@@ -833,12 +886,13 @@ export default function Dashboard({
       {/* MODAL 2: Deletion Confirmation Dialogue */}
       <AnimatePresence>
         {transactionToDelete && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="fixed inset-0 bg-black/60 z-[99999] flex items-center justify-center p-4 pointer-events-auto" dir="rtl" onClick={() => setTransactionToDelete(null)}>
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl border border-slate-100 text-right"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl border border-slate-100 text-right pointer-events-auto relative z-[100000]"
             >
               <div className="text-center space-y-2">
                 <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
